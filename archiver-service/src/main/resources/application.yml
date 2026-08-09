@@ -41,3 +41,13 @@ edrdog:
     connect-timeout-ms: ${CLICKHOUSE_CONNECT_TIMEOUT_MS:2000}
     # 적재는 최대 500건(max-poll-records) 배치 INSERT 라 조회보다 길게 잡는다. Kafka max.poll.interval.ms(기본 5분) 안쪽이라 리밸런스는 안 난다.
     read-timeout-ms: ${CLICKHOUSE_READ_TIMEOUT_MS:10000}
+  # events 원본을 7일 TTL 이 지우기 전에 S3 호환 스토리지로 하루치씩 내보낸다(로컬 MinIO, 배포 S3).
+  archive:
+    enabled: ${ARCHIVE_ENABLED:false}   # 기본 OFF. 스토리지 없이 뜨는 로컬에서 매일 실패 로그가 쌓이지 않게 한다
+    # ClickHouse 가 직접 접속하므로 CH 에서 닿는 주소여야 한다(로컬 kind 는 서비스 DNS).
+    base-url: ${ARCHIVE_BASE_URL:http://minio:9000/edrdog-archive}
+    access-key: ${ARCHIVE_ACCESS_KEY:}  # 시크릿은 Infisical 주입
+    secret-key: ${ARCHIVE_SECRET_KEY:}
+    # TTL(7일)보다 작아야 지워지기 전에 나간다. 하루 여유를 둔다.
+    delay-days: ${ARCHIVE_DELAY_DAYS:6}
+    cron: ${ARCHIVE_CRON:0 30 3 * * *}  # 매일 03:30. 적재가 한가한 시간대
