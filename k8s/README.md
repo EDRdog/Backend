@@ -297,6 +297,28 @@ Machine Identity 자격증명 Secret 생성 1회, `kubectl apply -f k8s/infisica
   `kubectl -n edrdog set env deployment/<이름> <키>-` 로 기존 env 를 먼저 지운다.
 - CD 는 `infisicalsecrets` CRD 가 있을 때만 이 파일을 apply 한다. Operator 가 없으면 건너뛴다.
 
+## 이벤트 아카이브 (MinIO, 로컬 전용)
+
+`events` 원본은 7일 TTL 로 지워진다. 침해는 발각까지 몇 주가 걸리는 일이 흔해서, 지워지기 전에
+하루치씩 S3 호환 스토리지로 내보낸다(archiver 의 `EventArchiver`). 로컬은 MinIO, 배포는 실제 S3 다.
+
+```bash
+sudo kubectl apply -f k8s/local/minio.yaml
+kubectl -n edrdog port-forward svc/minio 9001:9001   # 콘솔 http://localhost:9001
+```
+
+- **배포서버에는 안 올라간다.** CD 는 `k8s/` 바로 아래 `*.yaml` 만 훑어서 하위 디렉터리는 대상이 아니다.
+- Infisical 에 `ARCHIVE_ACCESS_KEY`·`ARCHIVE_SECRET_KEY` 가 있어야 한다. MinIO root 계정과 archiver 가
+  같은 키를 쓴다. 값이 갈리면 ClickHouse 가 인증에서 막힌다.
+- 기본은 꺼져 있다. 켜려면 `ARCHIVE_ENABLED=true`. 매일 03:30 에 6일 지난 하루치를 내보낸다.
+- 버킷(`edrdog-archive`)은 MinIO 가 자동으로 만들지 않아 사이드카(`mc`)가 만든다. 이게 없으면 INSERT 가 그대로 실패한다.
+- 내보낸 것을 확인하거나 조사에 쓸 때는 ClickHouse 에서 그대로 읽는다.
+  ```sql
+  SELECT count() FROM s3('http://minio:9000/edrdog-archive/events/**/*.parquet',
+                         '<ACCESS_KEY>', '<SECRET_KEY>', 'Parquet');
+  ```
+- 같은 날을 다시 내보내도 경로가 같고 `s3_truncate_on_insert` 로 덮어써서 중복이 안 쌓인다.
+
 ## 메모
 
 - **MySQL·ClickHouse 는 PVC 를 쓴다.** 파드가 갈려도 가입 계정과 이벤트 이력이 남는다.
