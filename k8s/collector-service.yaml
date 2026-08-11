@@ -61,9 +61,9 @@ spec:
             # 확인된 조치를 넘길 responder-service 주소
             - name: RESPONDER_URL
               value: "http://responder-service"
-            # 트레이스 OTLP 수집기 (k8s/otel-lgtm.yaml)
+            # 트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-lgtm:4318"
+              value: "https://otlp.nr-data.net:4318"
           readinessProbe:
             httpGet:
               path: /actuator/health

@@ -1,9 +1,12 @@
-# 로그 수집 (Grafana Alloy) — edrdog 네임스페이스 파드의 stdout 을 읽어 otel-lgtm 안의 Loki 로 보낸다.
-# 앱은 건드리지 않는다. Spring 기본 로그 패턴에 이미 [traceId-spanId] 가 찍히므로
-# 그것만 뽑아 structured metadata 로 붙여 두면 Grafana 에서 로그 -> 트레이스로 바로 넘어갈 수 있다.
+# 로그 수집 (Grafana Alloy) — edrdog 네임스페이스 파드의 stdout 을 읽어 뉴렐릭으로 OTLP 전송한다.
+# 앱은 건드리지 않는다. Spring 기본 로그 패턴에 이미 [traceId-spanId] 가 찍히므로 그것만 뽑아
+# OTLP LogRecord 의 trace_id/span_id 로 옮기면 뉴렐릭에서 로그 -> 트레이스로 바로 넘어갈 수 있다.
 #
-#   기동:  kubectl apply -f k8s/alloy.yaml
-#   확인:  Grafana > Dashboards > EDRdog > Logs & Traces
+# 운영 전용이다. 로컬 kind 는 서비스를 호스트에서 bootRun 으로 띄워 수집 대상 파드가 없고,
+# 로그도 터미널에 그대로 나온다. 로컬 관측 스택은 k8s/local/otel-lgtm.yaml 이 따로 담당한다.
+#
+#   기동:  kubectl apply -f k8s/alloy.yaml   (전제: edrdog-secrets 에 NEW_RELIC_LICENSE_KEY)
+#   확인:  New Relic > Logs (APM 서비스 화면의 Logs 탭에서 트레이스 연결 확인)
 #
 # DaemonSet 대신 단일 Deployment 인 이유: loki.source.kubernetes 는 노드 파일이 아니라 쿠버네티스 API 로 읽어서, DaemonSet 이면 노드마다 중복 수집한다.
 ---
@@ -21,12 +24,6 @@ rules:
   - apiGroups: [""]
     resources: ["pods", "pods/log", "namespaces"]
     verbs: ["get", "list", "watch"]
-  # 인프라 메트릭: kubelet 이 노출하는 컨테이너/노드 사용량을 긁기 위해 필요
-  - apiGroups: [""]
-    resources: ["nodes", "nodes/metrics", "nodes/proxy"]
-    verbs: ["get", "list", "watch"]
-  - nonResourceURLs: ["/metrics", "/metrics/cadvisor", "/metrics/resource"]
-    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -109,94 +106,60 @@ data:
         }
       }
 
-      // traceId 는 값 종류가 무한하니 라벨이 아니라 structured metadata 로(Grafana 의 Loki 데이터소스가 trace_id 를 잡아 Tempo 링크를 만들어 준다).
+      // Spring 로그 패턴의 [traceId-spanId] 를 뽑는다. structured metadata 가 아니라 라벨로 넣는 이유는
+      // otelcol.receiver.loki 가 structured metadata 를 통째로 버리기 때문이다(grafana/alloy#4075).
+      // 라벨은 log attribute 로 살아남고, 아래 transform 이 그걸 OTLP 네이티브 필드로 옮긴다.
+      // 카디널리티를 걱정해 라벨을 피했었지만 그건 Loki 인덱스 문제고, 운영은 Loki 를 안 거친다.
       stage.regex {
         expression = "\\[(?P<trace_id>[0-9a-f]{32})-(?P<span_id>[0-9a-f]{16})\\]"
       }
-      stage.structured_metadata {
+      stage.labels {
         values = {
           trace_id = "",
           span_id  = "",
         }
       }
 
-      forward_to = [loki.write.otel_lgtm.receiver]
+      forward_to = [otelcol.receiver.loki.newrelic.receiver]
     }
 
-    loki.write "otel_lgtm" {
-      endpoint {
-        url = "http://otel-lgtm:3100/loki/api/v1/push"
+    // ---- 뉴렐릭 전송 ----
+    // Loki 포맷 로그를 OTLP 로 변환한다. 인덱스 라벨은 log attribute 가 된다.
+    otelcol.receiver.loki "newrelic" {
+      output {
+        logs = [otelcol.processor.transform.newrelic.input]
       }
     }
 
-    // ---- 인프라 메트릭 ----
-    // 앱이 내보내는 JVM 지표만으로는 "힙은 여유로운데 파드가 왜 느리지" 같은 상황을 못 봐서, kubelet 이 이미 노출하는 컨테이너·노드 사용량을 긁어 채운다(별도 exporter 배포 없음).
-    discovery.kubernetes "nodes" {
-      role = "node"
-    }
+    // 뉴렐릭은 LogRecord 의 네이티브 trace_id/span_id 로 로그를 트레이스에 연결한다.
+    // 라벨로 들어온 attribute 를 그 필드로 옮기지 않으면 로그는 가는데 연결만 조용히 빠진다.
+    // service.name 은 APM 서비스 엔티티에 붙이기 위한 resource attribute 다.
+    otelcol.processor.transform "newrelic" {
+      error_mode = "ignore"
 
-    discovery.relabel "cadvisor" {
-      targets = discovery.kubernetes.nodes.targets
+      log_statements {
+        context = "log"
+        statements = [
+          `set(resource.attributes["service.name"], attributes["service_name"]) where attributes["service_name"] != nil`,
+          `set(trace_id.string, attributes["trace_id"]) where attributes["trace_id"] != nil`,
+          `set(span_id.string, attributes["span_id"]) where attributes["span_id"] != nil`,
+        ]
+      }
 
-      rule {
-        target_label = "__metrics_path__"
-        replacement  = "/metrics/cadvisor"
+      output {
+        logs = [otelcol.exporter.otlphttp.newrelic.input]
       }
     }
 
-    discovery.relabel "kubelet_resource" {
-      targets = discovery.kubernetes.nodes.targets
-
-      rule {
-        target_label = "__metrics_path__"
-        replacement  = "/metrics/resource"
+    otelcol.exporter.otlphttp "newrelic" {
+      client {
+        endpoint = "https://otlp.nr-data.net:4318"
+        headers  = {
+          "api-key" = sys.env("NEW_RELIC_LICENSE_KEY"),
+        }
       }
     }
 
-    // 컨테이너별 CPU·메모리·네트워크
-    prometheus.scrape "cadvisor" {
-      targets           = discovery.relabel.cadvisor.output
-      forward_to        = [prometheus.relabel.infra.receiver]
-      job_name          = "kubelet/cadvisor"
-      scheme            = "https"
-      scrape_interval   = "30s"
-      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-
-      tls_config {
-        insecure_skip_verify = true
-      }
-    }
-
-    // 노드 전체 CPU·메모리
-    prometheus.scrape "kubelet_resource" {
-      targets           = discovery.relabel.kubelet_resource.output
-      forward_to        = [prometheus.relabel.infra.receiver]
-      job_name          = "kubelet/resource"
-      scheme            = "https"
-      scrape_interval   = "30s"
-      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-
-      tls_config {
-        insecure_skip_verify = true
-      }
-    }
-
-    // cAdvisor 는 시리즈가 수천 개다. 대시보드에서 실제로 쓰는 것만 남긴다.
-    prometheus.relabel "infra" {
-      forward_to = [prometheus.remote_write.otel_lgtm.receiver]
-
-      rule {
-        source_labels = ["__name__"]
-        regex         = "container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_network_receive_bytes_total|container_network_transmit_bytes_total|node_cpu_usage_seconds_total|node_memory_working_set_bytes|machine_cpu_cores|machine_memory_bytes"
-        action        = "keep"
-      }
-    }
-
-    prometheus.remote_write "otel_lgtm" {
-      endpoint {
-        url = "http://otel-lgtm:9090/api/v1/write"
-      }
-    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -226,6 +189,10 @@ spec:
             - --server.http.listen-addr=0.0.0.0:12345
           ports:
             - containerPort: 12345  # Alloy 자체 UI (디버깅용, 노출 안 함)
+          # config.alloy 의 sys.env("NEW_RELIC_LICENSE_KEY") 가 이걸 읽는다. 없으면 뉴렐릭이 403 으로 거절한다.
+          envFrom:
+            - secretRef:
+                name: edrdog-secrets
           volumeMounts:
             - name: config
               mountPath: /etc/alloy
