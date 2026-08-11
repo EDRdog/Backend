@@ -65,10 +65,13 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 384Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              # 512Mi 는 뉴렐릭 자바 에이전트를 붙이기 전 기준이었다. 붙이고 나서 실측이 collector 495Mi,
+              # api 472Mi, detector 468Mi 로 상한의 90%를 넘겼다. 늘어난 건 힙이 아니라 비힙
+              # (에이전트, 메타스페이스, 스레드)이라 -Xmx 로 눌러도 안 줄어든다.
+              memory: 1Gi
 ---
 apiVersion: v1
 kind: Service
