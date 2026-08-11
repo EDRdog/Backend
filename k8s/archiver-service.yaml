@@ -32,9 +32,16 @@ spec:
               value: "kafka:9094"
             - name: EDRDOG_CLICKHOUSE_URL
               value: "http://clickhouse:8123"
-            # 메트릭/트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "https://otlp.nr-data.net:4318"
+            # 앱의 OTLP 전송은 끈다. 관측은 전부 뉴렐릭 자바 에이전트가 맡는다.
+            # cep.* 커스텀 지표는 graceMs 산정과 글쓰기용 실측 도구라 로컬에서만 쓴다(코드는 그대로 있다).
+            - name: OTEL_ENABLED
+              value: "false"
+            # 에이전트가 붙일 APM 엔티티 이름. spring.application.name 과 맞춘다.
+            - name: NEW_RELIC_APP_NAME
+              value: "archiver"
+            # 로그도 에이전트가 보낸다(그래서 Alloy 를 뺐다). 기본값에 기대지 않고 명시한다.
+            - name: NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED
+              value: "true"
           readinessProbe:
             httpGet:
               path: /actuator/health
