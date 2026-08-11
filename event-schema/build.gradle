@@ -17,6 +17,9 @@ dependencies {
     api "com.google.protobuf:protobuf-java-util:${protobufVersion}"
     // Serde/Serializer 가 Kafka 인터페이스를, Jackson 모듈이 Jackson 인터페이스를 구현한다.
     // 쓰는 서비스에는 이미 둘 다 있어서 compileOnly 로 둔다.
+    // 발행 측 트레이스를 이어받는 KafkaTraceLink 가 쓴다. 쓰는 서비스도 런타임에 필요해서 api 다.
+    // 에이전트가 없으면 no-op 이라 로컬 실행과 테스트에는 영향이 없다.
+    api 'com.newrelic.agent.java:newrelic-api:8.21.0'
     compileOnly 'org.apache.kafka:kafka-clients'
     compileOnly 'com.fasterxml.jackson.core:jackson-databind'
     testImplementation 'org.apache.kafka:kafka-clients'
