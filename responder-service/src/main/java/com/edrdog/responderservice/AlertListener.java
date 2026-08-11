@@ -2,6 +2,8 @@ package com.edrdog.responderservice;
 
 import com.edrdog.responderservice.dto.Alert;
 import com.edrdog.responderservice.response.ResponsePlanner;
+import com.edrdog.schema.KafkaTraceLink;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,8 +25,14 @@ public class AlertListener {
         this.planner = new ResponsePlanner(cooldownMs);
     }
 
+    // 레코드로 받아야 헤더에서 트레이스를 이어받는다. 값만 받으면 detector 와 끊긴 트레이스가 된다.
     @KafkaListener(topics = "${edrdog.kafka.alerts-topic}", groupId = "${spring.kafka.consumer.group-id}")
-    public void onAlert(Alert alert) {
+    public void onAlert(ConsumerRecord<String, Alert> record) {
+        KafkaTraceLink.accept(record.headers());
+        handle(record.value());
+    }
+
+    public void handle(Alert alert) {
         planner.plan(alert).ifPresent(log::info);
     }
 }

@@ -1,7 +1,9 @@
 package com.edrdog.archiverservice.alert;
 
 import com.edrdog.archiverservice.alert.dto.Alert;
+import com.edrdog.schema.KafkaTraceLink;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -25,8 +27,14 @@ public class AlertIngestListener {
         this.mapper = mapper;
     }
 
+    // 레코드로 받아야 헤더에서 트레이스를 이어받는다. 값만 받으면 detector 와 끊긴 트레이스가 된다.
     @KafkaListener(topics = "${edrdog.kafka.alerts-topic}", containerFactory = "alertListenerContainerFactory")
-    public void onAlert(String message) {
+    public void onAlert(ConsumerRecord<String, String> record) {
+        KafkaTraceLink.accept(record.headers());
+        handle(record.value());
+    }
+
+    public void handle(String message) {
         Alert alert = parse(message);
         if (alert == null || alert.tenantId() == null || alert.tenantId().isBlank()
                 || alert.host() == null || alert.ruleId() == null) {
