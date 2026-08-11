@@ -53,12 +53,13 @@ spec:
               port: 9092
             initialDelaySeconds: 15
             periodSeconds: 10
+          # 기본 힙이 -Xmx1G 라 상한이 1Gi 면 힙만으로 다 찬다. 비힙 몫까지 준다
           resources:
             requests:
               cpu: 250m
-              memory: 512Mi
-            limits:
               memory: 1Gi
+            limits:
+              memory: 2Gi
 ---
 # 클러스터 내부용 (INTERNAL 리스너)
 apiVersion: v1
