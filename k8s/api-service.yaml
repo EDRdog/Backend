@@ -46,9 +46,9 @@ spec:
             # 발표 환경에서만 true(데모 계정 test/1234 + 과거 7일 시드). 배포서버가 true 라 맞췄다. 해커톤 끝나면 false 로 되돌린다.
             - name: DEMO_SEED
               value: "true"
-            # 메트릭/트레이스 OTLP 수집기 (k8s/otel-lgtm.yaml)
+            # 메트릭/트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-lgtm:4318"
+              value: "https://otlp.nr-data.net:4318"
             # GeoLite2 mmdb 를 이미지 밖(호스트 디스크)에서 읽는다. GeoIpResolver 가 이 경로를 먼저 보고, 없으면 jar 에 번들된 것으로 넘어간다.
             # 이미지 안에만 두면 MaxMind 429 로 배포 자체가 막힐 수 있고(실제로 막혔다) mmdb 없이 올리면 위협 지도가 조용히 빈다. 호스트에 두면 이미지를 갈아도 지도가 살아 있다.
             - name: GEOIP_DB_PATH

@@ -1,0 +1,122 @@
+# MinIO — 이벤트 원본 아카이브 저장소 (로컬 전용).
+#
+# 배포서버에는 올리지 않는다. CD 는 k8s/ 바로 아래 *.yaml 만 훑으므로(cd.yml 의 ls-tree, 하위 디렉터리
+# 미포함) 이 파일은 자동 배포 대상이 아니다. 배포 환경은 실제 S3 를 쓰고 ARCHIVE_BASE_URL 만 바꾼다.
+#
+#   apply:  sudo kubectl apply -f k8s/local/minio.yaml
+#   콘솔:   kubectl -n edrdog port-forward svc/minio 9001:9001  → http://localhost:9001
+#
+# ClickHouse 가 s3 테이블 함수로 직접 접속하므로 주소는 클러스터 안에서 닿는 http://minio:9000 이다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio
+  namespace: edrdog
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: edrdog
+spec:
+  replicas: 1
+  # RWO 볼륨이라 롤링으로 두면 새 파드가 볼륨을 못 잡고 매달린다(clickhouse 와 같은 이유).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - containerPort: 9000  # S3 API
+            - containerPort: 9001  # 웹 콘솔
+          # archiver 가 쓰는 값과 같은 키를 root 계정으로 쓴다. 둘이 갈리면 ClickHouse 가 인증에서 막힌다.
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: edrdog-secrets
+                  key: ARCHIVE_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: edrdog-secrets
+                  key: ARCHIVE_SECRET_KEY
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        # 버킷은 MinIO 가 자동으로 만들지 않는다. 없으면 ClickHouse 의 INSERT 가 그대로 실패한다.
+        # Job 으로 두면 내용이 바뀔 때 apply 가 immutable 로 죽어서(cd.yml 주석 참고) 사이드카로 둔다.
+        - name: bucket-init
+          image: quay.io/minio/mc:RELEASE.2024-09-16T17-43-14Z
+          command:
+            - sh
+            - -c
+            - |
+              until mc alias set local http://127.0.0.1:9000 "$ACCESS_KEY" "$SECRET_KEY"; do sleep 2; done
+              mc mb --ignore-existing local/edrdog-archive
+              echo "버킷 준비 완료: edrdog-archive"
+              sleep infinity
+          env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edrdog-secrets
+                  key: ARCHIVE_ACCESS_KEY
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edrdog-secrets
+                  key: ARCHIVE_SECRET_KEY
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: edrdog
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001

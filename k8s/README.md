@@ -11,8 +11,8 @@ kind create cluster --config k8s/kind-cluster.yaml   # 클러스터 생성 (name
 kubectl apply -f k8s/00-namespace.yaml
 # Grafana 로그인 비번. 없으면 otel-lgtm 파드가 안 뜬다 (로컬은 아무 값이나)
 kubectl -n edrdog create secret generic edrdog-secrets --from-literal=GRAFANA_ADMIN_PASSWORD=admin
-kubectl apply -f k8s/kafka.yaml -f k8s/clickhouse.yaml \
-              -f k8s/otel-lgtm.yaml -f k8s/alloy.yaml
+# alloy.yaml 은 운영 전용이라 로컬에서 띄우지 않는다(로컬은 서비스를 호스트 bootRun 으로 돌려 수집 대상 파드가 없다).
+kubectl apply -f k8s/kafka.yaml -f k8s/clickhouse.yaml -f k8s/local/otel-lgtm.yaml
 kubectl -n edrdog get pods                            # Running 확인
 ```
 
@@ -29,7 +29,8 @@ kubectl -n edrdog get pods                            # Running 확인
 | 에이전트 수집 HTTPS | `localhost:8443` (NodePort 30443) | 엔드포인트 에이전트가 붙는 곳(collector-service). 아래 시크릿을 만들어야 열린다 |
 
 클러스터 내부(파드 간) Kafka 주소: `kafka.edrdog.svc.cluster.local:9094`
-클러스터 내부 OTLP 주소: `http://otel-lgtm:4318` (각 서비스 Deployment 의 `OTEL_EXPORTER_OTLP_ENDPOINT`)
+OTLP 전송 대상: 로컬은 `http://localhost:4318`(호스트 bootRun -> kind 의 otel-lgtm), 운영은 뉴렐릭
+(`https://otlp.nr-data.net:4318`, 각 서비스 Deployment 의 `OTEL_EXPORTER_OTLP_ENDPOINT`)
 
 ## 확인
 
@@ -218,10 +219,11 @@ Caddyfile 은 그대로라 반영되지 않는다.
 고치면 다음 CD 가 덮어쓴다. 전에는 bootstrap 이 최초 1회 쓰고 아무도 다시 보지 않아서, 레포에 portainer
 블록을 넣고도 서버는 모른 채였고 서브도메인이 인증서가 없어 TLS 핸드셰이크부터 깨졌다.
 
-- **Kafka UI·Portainer·Grafana 는 키가 없으면 파드가 뜨지 않는다** (`optional` 을 안 줬다). 인증이 꺼진 채로
+- **Kafka UI·Portainer 는 키가 없으면 파드가 뜨지 않는다** (`optional` 을 안 줬다). 인증이 꺼진 채로
   멀쩡히 떠 있는 것보다 멈추는 편이 낫다. 키를 넣은 뒤
-  `kubectl -n edrdog rollout restart deploy/kafka-ui deploy/portainer deploy/otel-lgtm`.
-  `/kafka-ui/actuator/health` 와 Grafana `/api/health` 는 로그인 없이 200 이라 readinessProbe 는 그대로 통과한다.
+  `kubectl -n edrdog rollout restart deploy/kafka-ui deploy/portainer`.
+  `/kafka-ui/actuator/health` 는 로그인 없이 200 이라 readinessProbe 는 그대로 통과한다.
+  (Grafana 는 로컬 전용이 되어 배포 대상에서 빠졌다. 이슈 #220)
 - **Swagger 는 비번이 없으면 열리는 게 아니라 닫힌다.** `application.yml` 에 기본값을 두지 않았다.
   레포에 박아 두면 그게 곧 공개 비번이라서다. 로컬에서 보려면 `EDRDOG_SWAGGER_PASSWORD` 를 넣고 띄운다.
 - Swagger 가 `ApiKeyPolicy` 의 인증 예외로 남아 있는 건 그대로다. 브라우저로 여는 화면이라 `X-API-Key`
@@ -246,7 +248,7 @@ Caddyfile 은 그대로라 반영되지 않는다.
 
 ### Grafana
 
-`k8s/otel-lgtm.yaml`. `admin` / `GRAFANA_ADMIN_PASSWORD` 로 로그인한다. 이미지 기본값이 **익명 Admin** 이라
+`k8s/local/otel-lgtm.yaml`. `admin` / `GRAFANA_ADMIN_PASSWORD` 로 로그인한다. 이미지 기본값이 **익명 Admin** 이라
 (`run-grafana.sh` 가 `GF_AUTH_ANONYMOUS_ENABLED` 를 `true` 로 둔다) 그대로 밖에 열면 로그인 없이 아무나
 로그·트레이스·메트릭을 다 보고 대시보드도 고친다. 그래서 `GF_AUTH_ANONYMOUS_ENABLED=false` 로 끄고
 비번을 받는다.
@@ -297,6 +299,28 @@ Machine Identity 자격증명 Secret 생성 1회, `kubectl apply -f k8s/infisica
   `kubectl -n edrdog set env deployment/<이름> <키>-` 로 기존 env 를 먼저 지운다.
 - CD 는 `infisicalsecrets` CRD 가 있을 때만 이 파일을 apply 한다. Operator 가 없으면 건너뛴다.
 
+## 이벤트 아카이브 (MinIO, 로컬 전용)
+
+`events` 원본은 7일 TTL 로 지워진다. 침해는 발각까지 몇 주가 걸리는 일이 흔해서, 지워지기 전에
+하루치씩 S3 호환 스토리지로 내보낸다(archiver 의 `EventArchiver`). 로컬은 MinIO, 배포는 실제 S3 다.
+
+```bash
+sudo kubectl apply -f k8s/local/minio.yaml
+kubectl -n edrdog port-forward svc/minio 9001:9001   # 콘솔 http://localhost:9001
+```
+
+- **배포서버에는 안 올라간다.** CD 는 `k8s/` 바로 아래 `*.yaml` 만 훑어서 하위 디렉터리는 대상이 아니다.
+- Infisical 에 `ARCHIVE_ACCESS_KEY`·`ARCHIVE_SECRET_KEY` 가 있어야 한다. MinIO root 계정과 archiver 가
+  같은 키를 쓴다. 값이 갈리면 ClickHouse 가 인증에서 막힌다.
+- 기본은 꺼져 있다. 켜려면 `ARCHIVE_ENABLED=true`. 매일 03:30 에 6일 지난 하루치를 내보낸다.
+- 버킷(`edrdog-archive`)은 MinIO 가 자동으로 만들지 않아 사이드카(`mc`)가 만든다. 이게 없으면 INSERT 가 그대로 실패한다.
+- 내보낸 것을 확인하거나 조사에 쓸 때는 ClickHouse 에서 그대로 읽는다.
+  ```sql
+  SELECT count() FROM s3('http://minio:9000/edrdog-archive/events/**/*.parquet',
+                         '<ACCESS_KEY>', '<SECRET_KEY>', 'Parquet');
+  ```
+- 같은 날을 다시 내보내도 경로가 같고 `s3_truncate_on_insert` 로 덮어써서 중복이 안 쌓인다.
+
 ## 메모
 
 - **MySQL·ClickHouse 는 PVC 를 쓴다.** 파드가 갈려도 가입 계정과 이벤트 이력이 남는다.
@@ -308,20 +332,31 @@ Machine Identity 자격증명 Secret 생성 1회, `kubectl apply -f k8s/infisica
 - `extraPortMappings` 는 **클러스터 생성 시에만** 반영된다. 이미 만들어 둔 클러스터에 3000/4317/4318 을 뚫으려면
   클러스터를 다시 만들거나 `kubectl -n edrdog port-forward svc/otel-lgtm 3000:3000 4318:4318` 로 우회한다.
 
-## 모니터링 (otel-lgtm)
+## 모니터링
 
-- 구성: Grafana + Prometheus + Tempo + Loki 올인원 이미지(`grafana/otel-lgtm`) + 로그 수집기 Alloy(`k8s/alloy.yaml`).
+**로컬은 otel-lgtm, 운영은 뉴렐릭이다.** 계측은 양쪽이 같고 OTLP 엔드포인트만 다르다.
+벤더 에이전트(`-javaagent`)를 안 쓰는 이유가 이것이다. 백엔드를 바꿔도 앱은 안 건드린다(이슈 #220).
+
+| | 로컬 (kind) | 운영 (k3s) |
+|---|---|---|
+| 백엔드 | `k8s/local/otel-lgtm.yaml` (Grafana+Prometheus+Tempo+Loki) | 뉴렐릭 |
+| 엔드포인트 | `http://localhost:4318` | `https://otlp.nr-data.net:4318` |
+| 인증 | 없음 | `edrdog-secrets` 의 `NEW_RELIC_LICENSE_KEY` (api-key 헤더) |
+| 로그 | 안 모은다 (bootRun 이라 터미널에 그대로 나옴) | Alloy → OTLP → 뉴렐릭 |
+
 - 신호별 경로
-  - **메트릭**: api / detector / archiver 만 OTLP 로 전송 (`micrometer-registry-otlp` 를 그 3개 모듈 `build.gradle` 에만 추가)
+  - **메트릭**: api / detector / archiver / collector 만 OTLP 로 전송 (`micrometer-registry-otlp` 를 그 모듈 `build.gradle` 에만 추가)
   - **트레이스**: 6개 서비스 전부 OTLP 로 전송
-  - **로그**: 앱은 그냥 stdout 에 찍고, Alloy 가 `*-service` 파드 로그를 읽어 Loki 로 보낸다 (앱 코드 변경 없음)
-  - **인프라 메트릭**: Alloy 가 kubelet 의 cAdvisor·resource 엔드포인트를 긁어 컨테이너·노드 CPU/메모리를
-    Prometheus 로 remote write 한다. 별도 exporter 를 띄우지 않는다.
+  - **로그**: 앱은 그냥 stdout 에 찍고, Alloy 가 `*-service` 파드 로그를 읽어 보낸다 (앱 코드 변경 없음)
+  - **인프라 메트릭**: 안 모은다. 실제로 안 보던 지표라 뉴렐릭 전환 때 뺐다. 필요해지면 뉴렐릭 k8s 통합을 붙인다.
 - Kafka 발행·소비 구간에도 스팬이 생겨(`spring.kafka.*.observation-enabled`), collector → detector → archiver 흐름이
   트레이스 하나로 이어진다.
-- 로그에는 Spring 기본 패턴의 `[traceId-spanId]` 를 Alloy 가 뽑아 structured metadata 로 붙인다.
-  Grafana 에서 로그 한 줄을 펼치면 trace_id 링크로 Tempo 트레이스까지 바로 넘어간다.
-- 대시보드는 **EDRdog 폴더에 4개**. 첫 화면은 Overview.
+- 로그의 `[traceId-spanId]` 는 Alloy 가 뽑아 **라벨**로 넣고, `otelcol.processor.transform` 이 OTLP LogRecord 의
+  네이티브 `trace_id`/`span_id` 로 옮긴다. structured metadata 를 쓰면 안 된다.
+  `otelcol.receiver.loki` 가 그걸 통째로 버려서(grafana/alloy#4075) 로그는 가는데 트레이스 연결만 조용히 빠진다.
+- 대시보드는 **로컬 Grafana 의 EDRdog 폴더에 4개**. 첫 화면은 Overview.
+  운영(뉴렐릭)에는 이 대시보드가 없다. 표준 APM 화면(서비스별 응답시간·처리량·에러율)은 기본으로 나오고,
+  커스텀 도메인 지표는 NRQL 로 따로 짜야 한다.
 
   | 대시보드 | 내용 |
   |---|---|
@@ -331,9 +366,13 @@ Machine Identity 자격증명 Secret 생성 1회, `kubectl apply -f k8s/infisica
   | EDRdog Logs & Traces | 레벨별 로그 볼륨, 로그 스트림, 에러 로그, 최근 트레이스 목록 |
 
   이미지 기본 대시보드(RED / JVM Overview)도 루트에 그대로 남아 있다.
-  대시보드를 고치려면 `otel-lgtm.yaml` ConfigMap 안의 JSON 을 고치고 apply 한 뒤 파드를 재시작한다
+  대시보드를 고치려면 `k8s/local/otel-lgtm.yaml` ConfigMap 안의 JSON 을 고치고 apply 한 뒤 파드를 재시작한다
   (subPath 마운트라 ConfigMap 만 바꿔서는 반영되지 않는다).
 - 스택 없이 서비스만 띄우려면 `OTEL_ENABLED=false`. 샘플링은 `OTEL_TRACE_SAMPLING`(기본 1.0 = 전량).
+- 뉴렐릭 무료 티어는 **월 100GB 수집**이다. 넘으면 과금이 아니라 수집·접근이 막히고 다음 달 1일에 풀린다
+  (85% 에 경고 메일). 카드를 등록하지 않으면 청구가 구조적으로 불가능하다.
+  볼륨을 줄여야 하면 `OTEL_TRACE_SAMPLING` 을 낮추고, 그다음이 메트릭 `step`(현재 10s, 기본 1m) 이다.
+  둘 다 매니페스트 env 라 재배포만 하면 된다. 실측 전에 미리 낮추지 않는다.
 - 지표는 **PVC(`otel-lgtm-data`, 5Gi)** 에 남는다. 여기만 emptyDir 이 아니다. 파드가 재시작돼도 그동안의
   지표·로그·트레이스가 살아 있어야 발표 중에 그래프가 비지 않기 때문이다. 기본 StorageClass 를 쓴다.
   RWO 볼륨이라 Deployment 전략은 `Recreate`(롤링이면 새 파드가 볼륨을 못 잡고 서로 기다린다).
