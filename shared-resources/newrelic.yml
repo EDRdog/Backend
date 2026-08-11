@@ -3,33 +3,20 @@
 # 라이선스 키와 앱 이름은 여기 두지 않는다. 매니페스트의 NEW_RELIC_LICENSE_KEY / NEW_RELIC_APP_NAME
 # 환경변수가 이 파일보다 우선하고, 시크릿을 깃에 넣지 않는다는 원칙과도 맞다.
 common: &default_settings
-  # Kafka 구간에서 트레이스가 끊겨 서비스 맵에 노드가 하나만 뜬다(이슈 #229).
-  # 서비스 사이가 HTTP 호출이 아니라 발행-구독이라, 프로듀서가 메시지 헤더에 트레이스 컨텍스트를 싣고
-  # 컨슈머가 이어받아야 collector -> detector -> archiver 가 한 트레이스로 이어진다.
+  # @KafkaListener 소비를 트랜잭션으로 잡는다. 이게 없으면 archiver/alert/responder 는
+  # 액추에이터 프로브 트래픽만 APM 에 보이고 정작 메시지 처리는 안 보인다. 기본값은 꺼짐이다.
   #
   # ⚠️ 이름에 판번호까지 정확히 적어야 한다. JAR 매니페스트는 72바이트에서 줄이 접히는데,
-  #    접힌 뒷부분을 놓치고 판번호 없이 적었다가 아무것도 안 켜진 채로 한 번 배포했다(#232).
-  #    켜졌는지는 기동 로그의 "registered weave package" 로 확인한다. 이름이 틀리면 오류 없이 무시된다.
+  #    접힌 뒷부분을 놓치고 적었다가 아무것도 안 켜진 채로 배포했다(#232).
+  #    켜졌는지는 기동 로그의 "registered weave package" 로 확인한다. 틀리면 오류 없이 무시된다.
   #
-  # 컨슈머 쪽(kafka-clients-spans-consumer-2.0.0)은 기본값이 켜짐이라 여기 없다.
-  # 아래 셋은 기본값이 꺼짐이다. Kafka 가 고처리량이라 뉴렐릭이 ingest 부담을 우려해 꺼 뒀다.
+  # kafka-clients-spans / kafka-streams-spans 는 뺐다. 켜도 프로듀서가 메시지 헤더에
+  # traceparent 를 싣지 않아 트레이스가 안 이어진다(kafka-console-consumer 로 헤더를 직접 확인).
+  # 스팬만 늘고 얻는 게 없었다. 미해결로 #235 에 남겼다.
   class_transformer:
-    # 프로듀서가 트레이스 컨텍스트를 메시지 헤더에 넣는다. 이게 꺼져 있으면 컨슈머가 읽을 게 없다.
-    com.newrelic.instrumentation.kafka-clients-spans-0.11.0.0:
-      enabled: true
-    # detector 의 판정 토폴로지. Streams 는 spring-kafka 계측이 적용되지 않아 별도로 필요하다.
-    com.newrelic.instrumentation.kafka-streams-spans-3.7.0:
-      enabled: true
     # @KafkaListener 소비자 (archiver 2, alert 1, responder 1, detector 의 alerts-view 1)
     com.newrelic.instrumentation.spring-kafka-2.2.0:
       enabled: true
-
-  kafka:
-    spans:
-      distributed_trace:
-        # archiver 가 배치 소비라 필요하다. 한 번에 여러 건을 받아갈 때도 트레이스를 잇는다.
-        consume_many:
-          enabled: true
 
 production:
   <<: *default_settings
