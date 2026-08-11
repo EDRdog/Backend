@@ -77,14 +77,11 @@ jobs:
         with:
           name: boot-jars
           # 안 바꾼 모듈은 굽지도 않으니 jar 가 없다. 없는 경로는 넘어간다.
+          # jar 만 넘기면 이미지 빌드 때 newrelic.yml 이 없어 Dockerfile 의 COPY 가 깨진다.
           if-no-files-found: ignore
           path: |
-            detector-service/build/libs/*.jar
-            responder-service/build/libs/*.jar
-            archiver-service/build/libs/*.jar
-            api-service/build/libs/*.jar
-            alert-service/build/libs/*.jar
-            collector-service/build/libs/*.jar
+            *-service/build/libs/*.jar
+            *-service/build/libs/*.yml
 
   # 이미지 빌드 + GHCR 푸시 (바뀐 모듈만)
   image:
