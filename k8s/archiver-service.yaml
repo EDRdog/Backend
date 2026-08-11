@@ -32,9 +32,9 @@ spec:
               value: "kafka:9094"
             - name: EDRDOG_CLICKHOUSE_URL
               value: "http://clickhouse:8123"
-            # 메트릭/트레이스 OTLP 수집기 (k8s/otel-lgtm.yaml)
+            # 메트릭/트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-lgtm:4318"
+              value: "https://otlp.nr-data.net:4318"
           readinessProbe:
             httpGet:
               path: /actuator/health

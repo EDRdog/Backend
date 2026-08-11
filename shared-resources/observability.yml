@@ -5,11 +5,14 @@ management:
     web:
       exposure:
         include: health, info
-  # 관측 - otel-lgtm(k8s/otel-lgtm.yaml) 으로 OTLP 전송. 스택 없이 개발할 땐 OTEL_ENABLED=false.
+  # 관측 - OTLP 전송. 로컬은 otel-lgtm(k8s/local/otel-lgtm.yaml), 운영은 뉴렐릭. 스택 없이 개발할 땐 OTEL_ENABLED=false.
   tracing:
     enabled: ${OTEL_ENABLED:true}
     sampling:
-      probability: ${OTEL_TRACE_SAMPLING:1.0}      # 데모 규모라 전량 샘플링
+      probability: ${OTEL_TRACE_SAMPLING:1.0}      # 데모 규모라 전량 샘플링. 뉴렐릭 ingest 실측 후 조절한다
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+      # 뉴렐릭은 api-key 헤더로 인증한다. 로컬 otel-lgtm 은 헤더를 무시하므로 빈 값이어도 무해하다.
+      headers:
+        api-key: ${NEW_RELIC_LICENSE_KEY:}

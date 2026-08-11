@@ -292,7 +292,7 @@ jobs:
           fi
           if [ -n "$INFRA_FAILED" ] || [ -n "$SMOKE_FAILED" ]; then
           [ -z "$INFRA_FAILED" ] || echo "인프라 롤아웃 실패:$INFRA_FAILED" >&2
-          [ -z "$INFRA_FAILED" ] || echo "kafka-ui·portainer·otel-lgtm 이라면 edrdog-secrets 에 계정 키가 없는 것이다(k8s/README.md)." >&2
+          [ -z "$INFRA_FAILED" ] || echo "kafka-ui·portainer 라면 edrdog-secrets 에 계정 키가 없는 것이다(k8s/README.md)." >&2
           [ -z "$INFRA_FAILED" ] || echo "caddy 라면 scripts/Caddyfile 이 잘못됐거나 reload 가 실패한 것이다. 서버 설정은 옛 상태 그대로다." >&2
           exit 1
           fi

@@ -21,13 +21,17 @@ spec:
           image: ghcr.io/edrdog/backend/detector-service:latest
           ports:
             - containerPort: 8081
+          # Infisical 동기화 edrdog-secrets. 뉴렐릭 인증키(NEW_RELIC_LICENSE_KEY) 가 여기 들어온다.
+          envFrom:
+            - secretRef:
+                name: edrdog-secrets
           env:
             # 실제 Kafka 주소로 교체 (ConfigMap 으로 분리해도 됨)
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: "kafka:9094"
-            # 메트릭/트레이스 OTLP 수집기 (k8s/otel-lgtm.yaml)
+            # 메트릭/트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-lgtm:4318"
+              value: "https://otlp.nr-data.net:4318"
           # 경로를 그룹별로 나눠야 Kafka Streams 항목이 readiness 에만 걸린다(이슈 #214).
           # 루트 /actuator/health 를 그대로 두면 Streams 가 죽어도 liveness 까지 DOWN 이 되어 재시작 루프에 빠진다.
           readinessProbe:
