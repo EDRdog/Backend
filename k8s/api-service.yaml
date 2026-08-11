@@ -46,9 +46,16 @@ spec:
             # 발표 환경에서만 true(데모 계정 test/1234 + 과거 7일 시드). 배포서버가 true 라 맞췄다. 해커톤 끝나면 false 로 되돌린다.
             - name: DEMO_SEED
               value: "true"
-            # 메트릭/트레이스 OTLP 전송 대상 (뉴렐릭). 인증키는 edrdog-secrets 의 NEW_RELIC_LICENSE_KEY
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "https://otlp.nr-data.net:4318"
+            # 앱의 OTLP 전송은 끈다. 관측은 전부 뉴렐릭 자바 에이전트가 맡는다.
+            # cep.* 커스텀 지표는 graceMs 산정과 글쓰기용 실측 도구라 로컬에서만 쓴다(코드는 그대로 있다).
+            - name: OTEL_ENABLED
+              value: "false"
+            # 에이전트가 붙일 APM 엔티티 이름. spring.application.name 과 맞춘다.
+            - name: NEW_RELIC_APP_NAME
+              value: "api"
+            # 로그도 에이전트가 보낸다(그래서 Alloy 를 뺐다). 기본값에 기대지 않고 명시한다.
+            - name: NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED
+              value: "true"
             # GeoLite2 mmdb 를 이미지 밖(호스트 디스크)에서 읽는다. GeoIpResolver 가 이 경로를 먼저 보고, 없으면 jar 에 번들된 것으로 넘어간다.
             # 이미지 안에만 두면 MaxMind 429 로 배포 자체가 막힐 수 있고(실제로 막혔다) mmdb 없이 올리면 위협 지도가 조용히 빈다. 호스트에 두면 이미지를 갈아도 지도가 살아 있다.
             - name: GEOIP_DB_PATH

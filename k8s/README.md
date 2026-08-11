@@ -11,7 +11,6 @@ kind create cluster --config k8s/kind-cluster.yaml   # 클러스터 생성 (name
 kubectl apply -f k8s/00-namespace.yaml
 # Grafana 로그인 비번. 없으면 otel-lgtm 파드가 안 뜬다 (로컬은 아무 값이나)
 kubectl -n edrdog create secret generic edrdog-secrets --from-literal=GRAFANA_ADMIN_PASSWORD=admin
-# alloy.yaml 은 운영 전용이라 로컬에서 띄우지 않는다(로컬은 서비스를 호스트 bootRun 으로 돌려 수집 대상 파드가 없다).
 kubectl apply -f k8s/kafka.yaml -f k8s/clickhouse.yaml -f k8s/local/otel-lgtm.yaml
 kubectl -n edrdog get pods                            # Running 확인
 ```
@@ -340,20 +339,23 @@ kubectl -n edrdog port-forward svc/minio 9001:9001   # 콘솔 http://localhost:9
 | | 로컬 (kind) | 운영 (k3s) |
 |---|---|---|
 | 백엔드 | `k8s/local/otel-lgtm.yaml` (Grafana+Prometheus+Tempo+Loki) | 뉴렐릭 |
-| 엔드포인트 | `http://localhost:4318` | `https://otlp.nr-data.net:4318` |
-| 인증 | 없음 | `edrdog-secrets` 의 `NEW_RELIC_LICENSE_KEY` (api-key 헤더) |
-| 로그 | 안 모은다 (bootRun 이라 터미널에 그대로 나옴) | Alloy → OTLP → 뉴렐릭 |
+| 계측 | micrometer OTLP | 뉴렐릭 자바 에이전트 (`-javaagent`) |
+| 인증 | 없음 | `edrdog-secrets` 의 `NEW_RELIC_LICENSE_KEY` |
+| 로그 | 안 모은다 (bootRun 이라 터미널에 그대로 나옴) | 뉴렐릭 에이전트가 포워딩 |
 
-- 신호별 경로
-  - **메트릭**: api / detector / archiver / collector 만 OTLP 로 전송 (`micrometer-registry-otlp` 를 그 모듈 `build.gradle` 에만 추가)
-  - **트레이스**: 6개 서비스 전부 OTLP 로 전송
-  - **로그**: 앱은 그냥 stdout 에 찍고, Alloy 가 `*-service` 파드 로그를 읽어 보낸다 (앱 코드 변경 없음)
-  - **인프라 메트릭**: 안 모은다. 실제로 안 보던 지표라 뉴렐릭 전환 때 뺐다. 필요해지면 뉴렐릭 k8s 통합을 붙인다.
+- **운영은 뉴렐릭 자바 에이전트 하나가 전부 맡는다.** 트레이스·JVM·프로파일링·로그. 앱의 OTLP 는 `OTEL_ENABLED=false` 로 끈다.
+- **로컬은 반대로 에이전트를 안 붙이고 OTLP 로만 간다.** otel-lgtm 이 받는다.
+- `cep.alerts` / `cep.late.events` / `cep.event.lateness` 는 micrometer 커스텀 지표인데 **로컬 전용**이다.
+  `graceMs` 산정과 글쓰기용 실측 도구라 상시 감시 대상이 아니고, 탐지 발생은 Slack 알림으로 이미 보인다.
+  코드는 그대로 있으니 로컬에서 측정할 때 그대로 쓴다. 에이전트는 Micrometer 를 자동으로 집어가지 않으므로
+  운영에서 이 지표를 보고 싶어지면 OTLP 를 다시 켜야 한다(그때는 중복 트레이스를 피하게 스위치를 나눠야 한다).
+- **인프라 메트릭**: 안 모은다. 실제로 안 보던 지표다. 필요해지면 뉴렐릭 k8s 통합을 붙인다.
 - Kafka 발행·소비 구간에도 스팬이 생겨(`spring.kafka.*.observation-enabled`), collector → detector → archiver 흐름이
   트레이스 하나로 이어진다.
-- 로그의 `[traceId-spanId]` 는 Alloy 가 뽑아 **라벨**로 넣고, `otelcol.processor.transform` 이 OTLP LogRecord 의
-  네이티브 `trace_id`/`span_id` 로 옮긴다. structured metadata 를 쓰면 안 된다.
-  `otelcol.receiver.loki` 가 그걸 통째로 버려서(grafana/alloy#4075) 로그는 가는데 트레이스 연결만 조용히 빠진다.
+- 로그와 트레이스 연결은 에이전트가 알아서 붙인다(logs in context). Alloy 로 하던 시절에는
+  `trace_id` 를 라벨로 넣고 `otelcol.processor.transform` 으로 옮겨야 했다. `otelcol.receiver.loki` 가
+  structured metadata 를 통째로 버려서(grafana/alloy#4075) 그냥 두면 로그는 가는데 연결만 조용히 빠졌다.
+  Alloy 를 되살릴 일이 생기면 이 함정을 다시 밟지 말 것.
 - 대시보드는 **로컬 Grafana 의 EDRdog 폴더에 4개**. 첫 화면은 Overview.
   운영(뉴렐릭)에는 이 대시보드가 없다. 표준 APM 화면(서비스별 응답시간·처리량·에러율)은 기본으로 나오고,
   커스텀 도메인 지표는 NRQL 로 따로 짜야 한다.
