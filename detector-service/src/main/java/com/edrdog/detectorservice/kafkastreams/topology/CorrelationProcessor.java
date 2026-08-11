@@ -3,6 +3,7 @@ package com.edrdog.detectorservice.kafkastreams.topology;
 import com.edrdog.detectorservice.dto.Alert;
 import com.edrdog.schema.Event;
 import com.edrdog.detectorservice.rule.Rules;
+import com.edrdog.detectorservice.tracing.KafkaTraceLink;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.streams.KeyValue;
@@ -94,6 +95,13 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
 
     @Override
     public void process(Record<String, Event> record) {
+        // Kafka 를 건너도 트레이스가 이어지게 레코드마다 트랜잭션을 연다(#235).
+        // Streams 는 폴 단위로 트랜잭션을 열어 배치에 부모를 하나만 달 수 있어서, 여기서 직접 열지 않으면
+        // 배치의 나머지 레코드가 전부 출처를 잃는다. 판정 로직은 그대로 두고 감싸기만 한다.
+        KafkaTraceLink.linked(record.headers(), () -> processRecord(record));
+    }
+
+    private void processRecord(Record<String, Event> record) {
         Event current = record.value();
         if (current == null || record.key() == null) {
             return;

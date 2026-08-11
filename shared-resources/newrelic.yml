@@ -22,9 +22,9 @@ common: &default_settings
     # 프로듀서가 트레이스 컨텍스트를 메시지 헤더에 넣는다. 이게 꺼져 있으면 컨슈머가 읽을 게 없다.
     com.newrelic.instrumentation.kafka-clients-spans-0.11.0.0:
       enabled: true
-    # detector 의 판정 토폴로지. Streams 는 spring-kafka 계측이 적용되지 않아 별도로 필요하다.
-    com.newrelic.instrumentation.kafka-streams-spans-3.7.0:
-      enabled: true
+    # kafka-streams-spans 는 꺼 둔다. 켜면 폴 단위로 트랜잭션이 열려서, detector 가 레코드마다
+    # 여는 트랜잭션(KafkaTraceLink)이 새 트랜잭션이 아니라 그 안의 구간이 되어 버린다.
+    # 그러면 배치에 부모를 하나만 달 수 있어 나머지 레코드가 출처를 잃는다(#235).
     # @KafkaListener 소비자 (archiver 2, alert 1, responder 1, detector 의 alerts-view 1)
     com.newrelic.instrumentation.spring-kafka-2.2.0:
       enabled: true
