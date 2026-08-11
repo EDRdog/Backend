@@ -3,13 +3,14 @@ package com.edrdog.alertservice;
 import com.edrdog.alertservice.dto.Alert;
 import com.edrdog.alertservice.slack.SlackNotifier;
 import com.edrdog.alertservice.webhook.AlertRouter;
+import com.edrdog.schema.KafkaTraceLink;
+import java.util.Optional;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
-
-import java.util.Optional;
 
 /**
  * alerts 토픽을 소비해 host 소유 유저(없으면 tenant 관리자 채널)의 Slack 으로 알림을 보내는 리스너.
@@ -31,8 +32,14 @@ public class AlertListener {
         this.cooldown = new Cooldown(cooldownMs);
     }
 
+    // 레코드로 받아야 헤더에서 트레이스를 이어받는다. 값만 받으면 detector 와 끊긴 트레이스가 된다.
     @KafkaListener(topics = "${edrdog.kafka.alerts-topic}", groupId = "${spring.kafka.consumer.group-id}")
-    public void onAlert(Alert alert) {
+    public void onAlert(ConsumerRecord<String, Alert> record) {
+        KafkaTraceLink.accept(record.headers());
+        handle(record.value());
+    }
+
+    public void handle(Alert alert) {
         if (alert == null || alert.host() == null || alert.ruleId() == null) {
             return;
         }

@@ -1,6 +1,9 @@
 // Responder: alerts 소비 → 권장 조치 dry-run 표시 + 반자동 실제 조치(에이전트 명령 큐) (group: responder)
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'  // 실행 트리거 API + 에이전트 명령 채널
+    implementation project(':event-schema')                            // KafkaTraceLink (트레이스 연결). 스키마는 안 쓴다
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'com.fasterxml.jackson.core:jackson-databind'   // alerts JSON 역직렬화
+    // 리스너 시그니처를 바꾸면 기동은 멀쩡한데 레코드 수신에서만 터진다(#247). 브로커를 띄워 확인한다.
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }

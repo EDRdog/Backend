@@ -50,7 +50,7 @@ class AlertListenerTest {
         routed();
         when(slack.send(any(), anyString())).thenReturn(true);
 
-        listener.onAlert(alert(1_000));
+        listener.handle(alert(1_000));
 
         verify(slack).send(any(), anyString());
     }
@@ -60,7 +60,7 @@ class AlertListenerTest {
     void noRoute_skips() {
         when(router.route(any())).thenReturn(Optional.empty());
 
-        listener.onAlert(alert(1_000));
+        listener.handle(alert(1_000));
 
         verify(slack, never()).send(any(), anyString());
     }
@@ -71,8 +71,8 @@ class AlertListenerTest {
         routed();
         when(slack.send(any(), anyString())).thenReturn(true);
 
-        listener.onAlert(alert(1_000));
-        listener.onAlert(alert(2_000));
+        listener.handle(alert(1_000));
+        listener.handle(alert(2_000));
 
         verify(slack, times(1)).send(any(), anyString());
     }
@@ -83,8 +83,8 @@ class AlertListenerTest {
         routed();
         when(slack.send(any(), anyString())).thenReturn(false);
 
-        listener.onAlert(alert(1_000));
-        listener.onAlert(alert(2_000));
+        listener.handle(alert(1_000));
+        listener.handle(alert(2_000));
 
         verify(slack, times(2)).send(any(), anyString());
     }
