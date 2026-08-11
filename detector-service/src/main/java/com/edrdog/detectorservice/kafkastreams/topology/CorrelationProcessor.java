@@ -3,7 +3,7 @@ package com.edrdog.detectorservice.kafkastreams.topology;
 import com.edrdog.detectorservice.dto.Alert;
 import com.edrdog.schema.Event;
 import com.edrdog.detectorservice.rule.Rules;
-import com.edrdog.detectorservice.tracing.KafkaTraceLink;
+import com.edrdog.schema.KafkaTraceLink;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.streams.KeyValue;
