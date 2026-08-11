@@ -45,4 +45,16 @@ subprojects {
     tasks.named('test') {
         useJUnitPlatform()
     }
+
+    // 뉴렐릭 에이전트 설정을 이미지 빌드 컨텍스트로 옮긴다.
+    // 이미지 빌드 컨텍스트가 모듈 디렉터리라(cd.yml 의 context) Dockerfile 이 루트의 shared-resources 를
+    // 직접 COPY 할 수 없다. 에이전트는 자기 jar 옆의 newrelic.yml 을 읽으므로 이미지에서 /app/newrelic.yml 이 된다.
+    tasks.named('bootJar') {
+        doLast {
+            copy {
+                from rootProject.file('shared-resources/newrelic.yml')
+                into layout.buildDirectory.dir('libs')
+            }
+        }
+    }
 }

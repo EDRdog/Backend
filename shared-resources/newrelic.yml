@@ -1,0 +1,31 @@
+# 뉴렐릭 자바 에이전트 설정 — 운영 전용(로컬은 에이전트를 안 붙인다).
+#
+# 라이선스 키와 앱 이름은 여기 두지 않는다. 매니페스트의 NEW_RELIC_LICENSE_KEY / NEW_RELIC_APP_NAME
+# 환경변수가 이 파일보다 우선하고, 시크릿을 깃에 넣지 않는다는 원칙과도 맞다.
+common: &default_settings
+  # Kafka 구간에서 트레이스가 끊겨 서비스 맵에 노드가 하나만 뜬다(이슈 #229).
+  # 프로듀서가 메시지 헤더에 트레이스 컨텍스트를 싣고 컨슈머가 이어받아야 이어진다.
+  # 아래 둘 다 에이전트 기본값이 꺼짐이다(Kafka 가 고처리량이라 뉴렐릭이 꺼 뒀다).
+  #
+  # 모듈 이름은 문서가 아니라 에이전트 jar 안 Implementation-Title 을 확인해 적었다.
+  # 문서에는 kafka-clients-spans-0.11.0.0 처럼 판번호가 붙어 있는데 실제 이름에는 없다. 틀리면 조용히 무시된다.
+  #
+  # kafka-streams-spans 는 넣지 않았다. 우리 Kafka Streams 가 3.9.1 인데 에이전트가 3.7.0 까지만 가지고 있어
+  # 등록 자체가 안 되는 것을 기동 로그로 확인했다. Streams 도 내부적으로는 KafkaConsumer 를 쓰므로
+  # 연결은 아래 클라이언트 계측으로 될 수 있다. 배포 후 Entities(avg) 로 확인한다.
+  class_transformer:
+    com.newrelic.instrumentation.kafka-clients-spans:
+      enabled: true
+    # @KafkaListener 소비자 (archiver 2, alert 1, responder 1, detector 의 alerts-view 1)
+    com.newrelic.instrumentation.spring-kafka-2.2.0:
+      enabled: true
+
+  kafka:
+    spans:
+      distributed_trace:
+        # archiver 가 배치 소비라 필요하다. 한 번에 여러 건을 받아갈 때도 트레이스를 잇는다.
+        consume_many:
+          enabled: true
+
+production:
+  <<: *default_settings
