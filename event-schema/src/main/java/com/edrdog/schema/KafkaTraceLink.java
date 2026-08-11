@@ -1,4 +1,4 @@
-package com.edrdog.detectorservice.tracing;
+package com.edrdog.schema;
 
 import com.newrelic.api.agent.HeaderType;
 import com.newrelic.api.agent.NewRelic;
@@ -22,20 +22,39 @@ import java.util.stream.StreamSupport;
  * 켜져 있으면 폴 단위 트랜잭션이 이미 열려 있어서, 아래 {@code @Trace(dispatcher = true)} 가
  * 새 트랜잭션이 아니라 기존 트랜잭션의 구간이 되어 버린다.
  *
- * <p>판정 로직에서 이 클래스만 부르게 격리해 두었다. 관측 백엔드를 옮기면 여기만 걷어내면 된다.
- * 에이전트가 없으면 API 가 알아서 아무 일도 안 하므로 로컬 실행에도 영향이 없다.
+ * <p>벤더 API 를 이 클래스에만 두었다. 관측 백엔드를 옮기면 여기만 걷어내면 된다.
+ * 에이전트가 없으면 API 가 알아서 아무 일도 안 하므로 로컬 실행과 테스트에 영향이 없다.
+ *
+ * <p>events 토픽을 쓰는 쪽이 다 같이 필요해서 event-schema 에 둔다. 헤더 규약을 정의한
+ * {@link EventHeaders} 옆자리다.
  */
 public final class KafkaTraceLink {
 
     private KafkaTraceLink() {
     }
 
-    /** 레코드 하나를 별도 트랜잭션으로 열고, 헤더에 실린 발행 측 트레이스에 이어 붙인다. */
+    /**
+     * 레코드 하나를 별도 트랜잭션으로 열고, 헤더에 실린 발행 측 트레이스에 이어 붙인다.
+     * 레코드마다 처리가 일어나는 쪽(detector 의 판정)에 쓴다.
+     */
     @Trace(dispatcher = true)
     public static void linked(Iterable<Header> kafkaHeaders, Runnable body) {
+        accept(kafkaHeaders);
+        body.run();
+    }
+
+    /**
+     * 이미 열려 있는 트랜잭션을 발행 측 트레이스에 이어 붙이기만 한다.
+     *
+     * <p>배치가 작업 단위인 쪽(archiver 의 ClickHouse 적재)에 쓴다. 거기서는 레코드마다 트랜잭션을
+     * 열 이유가 없다. 실제 작업이 배치당 한 번이고, 쪼개면 INSERT 를 묶어 파트 수를 줄인 설계가 깨진다.
+     *
+     * <p>트랜잭션은 부모를 하나만 가질 수 있으므로 배치의 첫 레코드만 이어진다. 서비스 맵은 트레이스가
+     * 전부 이어져야 그려지는 게 아니라 일부만 이어져도 되므로 이걸로 충분하다.
+     */
+    public static void accept(Iterable<Header> kafkaHeaders) {
         NewRelic.getAgent().getTransaction()
                 .acceptDistributedTraceHeaders(TransportType.Kafka, new KafkaHeaders(kafkaHeaders));
-        body.run();
     }
 
     /** 뉴렐릭이 읽을 수 있게 Kafka 헤더를 감싼다. 읽기 전용이라 쓰기 메서드는 비워 둔다. */

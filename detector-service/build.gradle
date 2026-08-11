@@ -11,8 +11,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     implementation 'org.springframework.boot:spring-boot-starter-web'    // 데모용 이벤트 발행/조회 REST + Swagger 호스팅
     implementation 'org.springframework.kafka:spring-kafka'
-    // 레코드 단위로 발행 측 트레이스에 이어 붙이기 위한 API(#235). 에이전트가 없으면 no-op 이라 로컬은 영향 없다.
-    implementation 'com.newrelic.agent.java:newrelic-api:8.21.0'
     implementation 'io.micrometer:micrometer-registry-otlp'   // 메트릭 OTLP 전송 (판정 처리량/지연 관측 대상)
     implementation 'org.apache.kafka:kafka-streams'
     implementation 'com.fasterxml.jackson.core:jackson-databind'   // alerts JSON serde + Event.detail 파싱
