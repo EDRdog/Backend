@@ -10,10 +10,21 @@ common: &default_settings
   #    접힌 뒷부분을 놓치고 적었다가 아무것도 안 켜진 채로 배포했다(#232).
   #    켜졌는지는 기동 로그의 "registered weave package" 로 확인한다. 틀리면 오류 없이 무시된다.
   #
-  # kafka-clients-spans / kafka-streams-spans 는 뺐다. 켜도 프로듀서가 메시지 헤더에
-  # traceparent 를 싣지 않아 트레이스가 안 이어진다(kafka-console-consumer 로 헤더를 직접 확인).
-  # 스팬만 늘고 얻는 게 없었다. 미해결로 #235 에 남겼다.
+  # 아래 둘은 Kafka 구간 트레이스 연결을 위한 것이다(#235). 지금은 실측용으로 켜 둔 상태다.
+  #
+  # 앞서 이 둘을 걷어낸 근거는 "헤더가 비어 있다"였는데, 그 헤더 덤프는 모듈 이름이 틀려
+  # 프로듀서가 꺼져 있던 시점의 것이었다(#232 이전). 이름을 고친 뒤로는 헤더를 다시 안 떴다.
+  # 그래서 실제로 헤더가 실리는지는 아직 모른다. 이번에 켜서 kafka-console-consumer 로 확인한다.
+  #
+  # 뉴렐릭 문서상 Streams 트랜잭션은 레코드 단위가 아니라 폴 단위로 열리므로, 연결되더라도
+  # 폴 배치당 1건만 잡힐 수 있다. 그 정도로 쓸 만한지는 붙은 뒤에 판단한다.
   class_transformer:
+    # 프로듀서가 트레이스 컨텍스트를 메시지 헤더에 넣는다. 이게 꺼져 있으면 컨슈머가 읽을 게 없다.
+    com.newrelic.instrumentation.kafka-clients-spans-0.11.0.0:
+      enabled: true
+    # detector 의 판정 토폴로지. Streams 는 spring-kafka 계측이 적용되지 않아 별도로 필요하다.
+    com.newrelic.instrumentation.kafka-streams-spans-3.7.0:
+      enabled: true
     # @KafkaListener 소비자 (archiver 2, alert 1, responder 1, detector 의 alerts-view 1)
     com.newrelic.instrumentation.spring-kafka-2.2.0:
       enabled: true
