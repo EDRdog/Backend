@@ -32,7 +32,10 @@ jobs:
           FILES=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
           echo "바뀐 파일:" >&2; echo "$FILES" | sed 's/^/  /' >&2
           # 공통 파일은 어느 모듈이 영향받을지 알 수 없으므로 전부 굽는다.
-          if echo "$FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradlew|gradle/|\.github/workflows/cd\.yml)'; then
+          # shared-resources/ 가 빠져 있어 관측 설정을 바꿔도 이미지가 안 구워졌다. 매니페스트만 다시
+          # apply 되고 파드는 옛 이미지 그대로라, 바꾼 설정이 운영에 도달하지 않은 채 며칠 갈 수 있었다.
+          # newrelic.yml 은 이미지 안 /app/newrelic.yml 로 들어가고 observability*.yml 은 jar 에 들어간다.
+          if echo "$FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradlew|gradle/|shared-resources/|\.github/workflows/cd\.yml)'; then
             echo "공통 파일이 바뀌어 전 모듈을 다시 굽는다" >&2
             echo "modules=$ALL" >> "$GITHUB_OUTPUT"; exit 0
           fi
