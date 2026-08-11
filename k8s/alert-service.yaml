@@ -41,6 +41,15 @@ spec:
             # 로그도 에이전트가 보낸다(그래서 Alloy 를 뺐다). 기본값에 기대지 않고 명시한다.
             - name: NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED
               value: "true"
+          # 뉴렐릭 자바 에이전트가 기동에 시간을 얹어서 liveness(30s + 20s*3)가 먼저 파드를 죽였다(#226).
+          # initialDelaySeconds 를 늘리면 기동 후 장애 감지까지 계속 둔해진다. startupProbe 는 기동 중에만
+          # 봐주고 통과하는 즉시 원래 프로브가 제 간격으로 돌아온다.
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            periodSeconds: 10
+            failureThreshold: 30          # 최대 300초까지 기다린다
           readinessProbe:
             httpGet:
               path: /actuator/health
