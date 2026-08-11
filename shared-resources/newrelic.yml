@@ -28,6 +28,13 @@ common: &default_settings
     # @KafkaListener 소비자 (archiver 2, alert 1, responder 1, detector 의 alerts-view 1)
     com.newrelic.instrumentation.spring-kafka-2.2.0:
       enabled: true
+    # APM 의 Kafka 탭을 채운다. 기본 모듈은 토픽 단위까지만 재므로 브로커 노드별 지표가 없어
+    # 탭이 "Kafka Node Metrics 를 켜라"는 안내만 띄운 채 비어 있었다. 둘은 배타적이라 같이 못 켠다.
+    # kafka-clients 3.9.1 을 쓰므로 3.9.0 판이 걸린다.
+    com.newrelic.instrumentation.kafka-clients-metrics-3.9.0:
+      enabled: false
+    com.newrelic.instrumentation.kafka-clients-node-metrics-3.9.0:
+      enabled: true
 
 production:
   <<: *default_settings
