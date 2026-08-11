@@ -2,18 +2,19 @@ package com.edrdog.archiverservice;
 
 import com.edrdog.archiverservice.clickhouse.ClickHouseWriter;
 import com.edrdog.schema.Event;
-import com.edrdog.schema.KafkaTraceLink;
 import java.util.List;
-import org.apache.kafka.common.header.Headers;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.support.KafkaHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 /**
  * events 토픽을 archiver 컨슈머 그룹으로 소비해 ClickHouse 에 적재하는 리스너.
  * detector 와 별도 그룹이라 같은 이벤트를 독립적으로 모두 받는다. 적재는 ClickHouseWriter 에 위임.
  * poll 로 받은 배치를 통째로 넘긴다.
+ *
+ * <p>트레이스를 이으려고 @Header(KafkaHeaders.NATIVE_HEADERS) List&lt;Headers&gt; 파라미터를 붙였다가
+ * 적재가 통째로 멈췄다(#247). 배치 리스너에는 그 헤더가 채워지지 않아 메시지마다
+ * "Missing header 'kafka_nativeHeaders'" 로 실패한다. 원본 헤더가 필요하면 파라미터를
+ * List&lt;ConsumerRecord&lt;K,V&gt;&gt; 로 받아야 한다. 관측 때문에 적재를 멈출 수는 없어 되돌린다.
  */
 @Component
 public class EventListener {
@@ -24,19 +25,8 @@ public class EventListener {
         this.writer = writer;
     }
 
-    /**
-     * @param headers 발행 측 트레이스를 이어받기 위한 레코드별 원본 헤더. 적재에는 쓰지 않는다.
-     *                이게 없으면 Kafka 를 건널 때 트레이스가 끊겨 서비스 맵에 collector 와 안 이어진다(#235).
-     */
     @KafkaListener(topics = "${edrdog.kafka.events-topic}", groupId = "${spring.kafka.consumer.group-id}")
-    public void onEvents(List<Event> events,
-                         @Header(KafkaHeaders.NATIVE_HEADERS) List<Headers> headers) {
-        // 배치가 작업 단위라 레코드마다 트랜잭션을 열지 않는다. 쪼개면 INSERT 를 묶어 파트 수를 줄인
-        // 설계가 깨진다. 트랜잭션은 부모를 하나만 가지므로 첫 레코드만 이어지는데, 서비스 맵은
-        // 일부만 이어져도 그려지므로 그걸로 충분하다.
-        if (!headers.isEmpty()) {
-            KafkaTraceLink.accept(headers.get(0));
-        }
+    public void onEvents(List<Event> events) {
         writer.insert(events);
     }
 }
