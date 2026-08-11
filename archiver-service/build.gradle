@@ -5,4 +5,7 @@ dependencies {
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'com.fasterxml.jackson.core:jackson-databind'        // alerts JSON 역직렬화 + ClickHouse JSONEachRow 직렬화 (events 는 Protobuf)
     implementation 'io.micrometer:micrometer-registry-otlp'             // 메트릭 OTLP 전송 (ClickHouse 적재 지연/컨슈머 랙 관측 대상)
+    // 리스너가 실제 메시지를 받아 적재까지 가는지 보려면 브로커가 있어야 한다.
+    // 기동만 확인하고 배포했다가 적재가 통째로 멈춘 적이 있다(#247).
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }
