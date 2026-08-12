@@ -35,7 +35,9 @@ jobs:
           # shared-resources/ 가 빠져 있어 관측 설정을 바꿔도 이미지가 안 구워졌다. 매니페스트만 다시
           # apply 되고 파드는 옛 이미지 그대로라, 바꾼 설정이 운영에 도달하지 않은 채 며칠 갈 수 있었다.
           # newrelic.yml 은 이미지 안 /app/newrelic.yml 로 들어가고 observability*.yml 은 jar 에 들어간다.
-          if echo "$FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradlew|gradle/|shared-resources/|\.github/workflows/cd\.yml)'; then
+          # event-schema 는 라이브러리 모듈이라 이름이 *-service 가 아니다. 아래 필터에 안 걸려서
+          # 여기 없으면 이벤트 스키마나 KafkaTraceLink 를 고쳐도 아무 이미지도 안 구워진다.
+          if echo "$FILES" | grep -qE '^(build\.gradle|settings\.gradle|gradlew|gradle/|shared-resources/|event-schema/|\.github/workflows/cd\.yml)'; then
             echo "공통 파일이 바뀌어 전 모듈을 다시 굽는다" >&2
             echo "modules=$ALL" >> "$GITHUB_OUTPUT"; exit 0
           fi
