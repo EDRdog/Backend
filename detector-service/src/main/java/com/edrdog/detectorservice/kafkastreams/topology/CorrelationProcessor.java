@@ -189,6 +189,16 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
                 quiet.add(e.getKey());   // 순회 중 pendingHosts 를 건드리지 않으려고 먼저 모은다
             }
         }
+        if (quiet.isEmpty()) {
+            return;   // 대부분의 tick 은 여기서 끝난다. 아래 트랜잭션을 빈 채로 열지 않으려고 먼저 걸러낸다
+        }
+        // 여기서 나가는 알림은 벽시계가 트리거라 이어 붙일 부모가 없다. 그래도 트랜잭션이 있어야
+        // 프로듀서가 헤더를 실어 주고, 그래야 alert/responder/archiver 가 detector 에 이어진다.
+        // 시퀀스 룰은 대부분 이 경로로 나가므로 없으면 핵심 탐지가 통째로 트레이스 밖에 남는다.
+        KafkaTraceLink.traced(() -> flushAll(quiet));
+    }
+
+    private void flushAll(List<String> quiet) {
         // 조용해진 host 만 역직렬화한다. 아직 이벤트가 흐르는 host 는 store 를 읽지도 않는다.
         for (String host : quiet) {
             EventBuffer buffer = store.get(host);
