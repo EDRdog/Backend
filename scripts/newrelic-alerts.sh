@@ -87,5 +87,8 @@ while IFS='|' read -r NAME DESC NRQL DURATION; do
 done <<< "$CONDITIONS"
 
 echo
-echo "정책: https://one.newrelic.com/alerts/policies/detail/$POLICY_ID?account=$ACCOUNT"
+# 정책 상세는 엔티티 리다이렉트로만 열린다. GUID 는 "계정|AIOPS|POLICY|id" 를 base64 한 것이고
+# 패딩(=)은 URL 에 안 들어간다. /alerts/policies/detail/<id> 같은 경로는 404 다.
+GUID=$(printf '%s' "$ACCOUNT|AIOPS|POLICY|$POLICY_ID" | base64 | tr -d '=\n')
+echo "정책: https://one.newrelic.com/redirect/entity/$GUID?account=$ACCOUNT"
 echo "⚠️ 알림 채널(Slack·메일)은 아직 없다. Alerts → Destinations 에서 붙여야 실제로 도착한다."
