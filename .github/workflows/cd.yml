@@ -48,8 +48,12 @@ jobs:
           echo "modules=$MODULES" >> "$GITHUB_OUTPUT"
 
   # 빌드 + 테스트 후 boot jar 를 다음 잡으로 넘긴다 (바뀐 모듈만)
-  # settings.gradle 의 모듈끼리 의존이 하나도 없어서(project(...) 참조 0건) 모듈별로 잘라 돌려도
-  # 놓치는 깨짐이 없다. 공통 파일(build.gradle, gradle/**)이 바뀌면 shared 필터가 전 모듈을 태운다.
+  # 서비스끼리는 서로 의존하지 않아서 모듈별로 잘라 돌려도 놓치는 깨짐이 없다.
+  #
+  # ⚠️ 다만 여섯 서비스가 전부 event-schema 를 쓴다(project(':event-schema') 참조 7건).
+  #    그래서 event-schema 는 위 공통 파일 목록에 들어 있다. 거기서 빼면 스키마나 KafkaTraceLink 를
+  #    고쳐도 아무 이미지가 안 구워지고 CD 는 초록불로 끝난다(#267).
+  #    "모듈끼리 의존이 없다" 고 적혀 있던 자리다. 사실이 아니었다.
   build:
     needs: changes
     if: needs.changes.outputs.modules != '[]'
