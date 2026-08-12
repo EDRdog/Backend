@@ -299,3 +299,45 @@ jobs:
           exit 1
           fi
           REMOTE
+
+      # 배포 시각을 뉴렐릭 차트에 세로선으로 찍는다. 이게 없으면 "이 지연이 어느 배포부터인가"를
+      # 눈으로 못 본다. 하루에 배포를 여러 번 하면 그 경계가 곧 원인 후보다.
+      #
+      # 마커 실패로 배포를 죽이지 않는다. 배포는 이미 끝났고 마커는 부가 정보다.
+      # NEW_RELIC_API_KEY(User key)가 없으면 조용히 건너뛴다. 라이선스 키로는 안 된다.
+      - name: 뉴렐릭 배포 마커
+        if: success()
+        continue-on-error: true
+        env:
+          NR_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          BUILT_JSON: ${{ needs.changes.outputs.modules }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # 이 잡에는 checkout 이 없다. 커밋 제목은 이벤트에서 받는다.
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "${NR_API_KEY:-}" ]; then
+            echo "NEW_RELIC_API_KEY 가 없어 배포 마커를 건너뛴다" >&2
+            exit 0
+          fi
+          SUBJECT=$(printf '%s' "${SUBJECT:-}" | head -1 | tr -d '"\\')
+          # 매니페스트만 바뀌어 아무것도 안 구운 배포도 롤아웃은 일어난다. 그때는 여섯 개 다 찍는다.
+          MODULES=$(jq -r 'if length == 0 then
+              ["detector-service","responder-service","archiver-service","api-service","alert-service","collector-service"][]
+            else .[] end' <<<"$BUILT_JSON")
+          for m in $MODULES; do
+            APP=${m%-service}                       # 뉴렐릭 앱 이름은 NEW_RELIC_APP_NAME 과 같다(접미사 없음)
+            GUID=$(curl -sS https://api.newrelic.com/graphql \
+              -H "Api-Key: $NR_API_KEY" -H 'Content-Type: application/json' \
+              -d "{\"query\":\"{actor{entitySearch(query:\\\"domain='APM' AND type='APPLICATION' AND name='$APP'\\\"){results{entities{guid}}}}}\"}" \
+              | jq -r '.data.actor.entitySearch.results.entities[0].guid // empty')
+            if [ -z "$GUID" ]; then
+              echo "  $APP: 엔티티를 못 찾아 건너뜀" >&2; continue
+            fi
+            OK=$(curl -sS https://api.newrelic.com/graphql \
+              -H "Api-Key: $NR_API_KEY" -H 'Content-Type: application/json' \
+              -d "{\"query\":\"mutation{changeTrackingCreateDeployment(deployment:{entityGuid:\\\"$GUID\\\",version:\\\"${SHA:0:7}\\\",commit:\\\"$SHA\\\",user:\\\"$ACTOR\\\",deepLink:\\\"$RUN_URL\\\",description:\\\"$SUBJECT\\\"}){deploymentId}}\"}" \
+              | jq -r '.data.changeTrackingCreateDeployment.deploymentId // empty')
+            [ -n "$OK" ] && echo "  $APP: 마커 기록됨" >&2 || echo "  $APP: 마커 실패" >&2
+          done
