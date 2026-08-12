@@ -44,6 +44,24 @@ public final class KafkaTraceLink {
     }
 
     /**
+     * 이어 붙일 부모 없이 트랜잭션만 연다.
+     *
+     * <p>레코드가 아니라 벽시계가 부르는 쪽(detector 의 punctuator)에 쓴다. 거기서 발행하는 알림은
+     * 트리거가 특정 레코드가 아니라 "grace 가 지났다"라서 이어 붙일 부모가 없다. 그래도 트랜잭션이
+     * 있어야 프로듀서 계측이 헤더를 실어 주고, 그래야 alert/responder/archiver 가 detector 에 이어진다.
+     *
+     * <p>트랜잭션이 없으면 헤더가 통째로 안 실린다. 시퀀스 룰(R1·R2)은 대부분 이 경로로 발행되므로
+     * 이게 없으면 이 프로젝트의 핵심 탐지 경로가 트레이스 밖에 남는다.
+     *
+     * <p>⚠️ 부를 때마다 트랜잭션이 하나 생긴다. punctuate 처럼 자주 도는 자리에서는 실제로 할 일이
+     * 있을 때만 불러야 한다. 매 tick 감싸면 초당 두 개씩 빈 트랜잭션이 쌓인다.
+     */
+    @Trace(dispatcher = true)
+    public static void traced(Runnable body) {
+        body.run();
+    }
+
+    /**
      * 이미 열려 있는 트랜잭션을 발행 측 트레이스에 이어 붙이기만 한다.
      *
      * <p>배치가 작업 단위인 쪽(archiver 의 ClickHouse 적재)에 쓴다. 거기서는 레코드마다 트랜잭션을
