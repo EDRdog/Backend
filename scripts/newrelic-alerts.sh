@@ -58,23 +58,32 @@ while IFS='|' read -r NAME DESC NRQL DURATION; do
   fi
 
   # 5xx 는 "1건이라도 나오면" 이고, 나머지는 "0건이 이어지면" 이다. 방향이 반대다.
+  #
+  # fillOption 은 STATIC / LAST_VALUE / NONE 셋뿐이고 fillValue 는 STATIC 일 때만 받는다.
+  # 5xx 는 없는 게 정상이라 빈 구간을 메울 이유가 없다(메우면 값이 안 변해 판정만 흐려진다).
   if [[ "$NAME" == *5xx* ]]; then
-    OP=ABOVE; THRESHOLD=0; GAP=FILL_LAST_VALUE
+    OP=ABOVE; THRESHOLD=0; FILL='fillOption:NONE'
   else
-    OP=BELOW; THRESHOLD=1; GAP=STATIC   # 데이터가 아예 없는 구간도 0 으로 채워야 정지를 잡는다
+    OP=BELOW; THRESHOLD=1; FILL='fillOption:STATIC,fillValue:0'   # 정지는 데이터가 없는 것으로 나타난다
   fi
 
-  ID=$(nerdgraph "mutation{alertsNrqlConditionStaticCreate(accountId:$ACCOUNT,policyId:\"$POLICY_ID\",condition:{
+  RESP=$(nerdgraph "mutation{alertsNrqlConditionStaticCreate(accountId:$ACCOUNT,policyId:\"$POLICY_ID\",condition:{
       name:\"$NAME\",
       description:\"$DESC\",
       enabled:true,
       nrql:{query:\"$NRQL\"},
-      signal:{aggregationWindow:60,aggregationMethod:EVENT_FLOW,aggregationDelay:120,fillOption:$GAP,fillValue:0},
+      signal:{aggregationWindow:60,aggregationMethod:EVENT_FLOW,aggregationDelay:120,$FILL},
       terms:[{operator:$OP,threshold:$THRESHOLD,thresholdDuration:$DURATION,thresholdOccurrences:ALL,priority:CRITICAL}],
       violationTimeLimitSeconds:86400
-    }){id}}" | jq -r '.data.alertsNrqlConditionStaticCreate.id // empty')
+    }){id}}")
+  ID=$(jq -r '.data.alertsNrqlConditionStaticCreate.id // empty' <<< "$RESP")
 
-  [ -n "$ID" ] && echo "  생성: $NAME ($ID)" || echo "  실패: $NAME" >&2
+  if [ -n "$ID" ]; then
+    echo "  생성: $NAME ($ID)"
+  else
+    echo "  실패: $NAME" >&2
+    jq -r '.errors[]?.message // empty' <<< "$RESP" | sed 's/^/    /' >&2
+  fi
 done <<< "$CONDITIONS"
 
 echo
