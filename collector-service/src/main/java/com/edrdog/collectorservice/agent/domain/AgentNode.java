@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
 
@@ -12,7 +13,11 @@ import java.time.Instant;
  * PK 는 발급 토큰의 SHA-256 해시다. 평문은 저장하지 않아 DB 가 새도 엔드포인트를 위장할 수 없다.
  */
 @Entity
-@Table(name = "agent_nodes")
+// 제약이 없으면 enroll 요청 둘이 동시에 들어올 때 양쪽 다 신규로 보고 각자 INSERT 한다(#194).
+@Table(name = "agent_nodes",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_agent_nodes_tenant_host",
+                columnNames = {"tenant_id", "host_identifier"}))
 public class AgentNode {
 
     @Id

@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 /** 수집 API 의 서버 로직. enroll secret/node_key 인증과 tenant 태깅·검증·발행을 담당한다. */
@@ -48,14 +50,21 @@ public class AgentService {
         String host = (hostIdentifier == null || hostIdentifier.isBlank()) ? "unknown" : hostIdentifier;
         Instant now = Instant.now();
         String nodeKey = Tokens.newToken();
-        AgentNode previous = nodes.findByTenantIdAndHostIdentifier(tenantId, host).orElse(null);
-        if (previous == null) {
-            nodes.save(AgentNode.enroll(Tokens.hash(nodeKey), tenantId, host, platform, now));
-        } else {
-            nodes.delete(previous);   // 해시가 PK 라 토큰을 새로 발급하면 행을 갈아끼워야 한다
-            nodes.flush();
-            nodes.save(AgentNode.reenroll(Tokens.hash(nodeKey), previous, platform, now));
+        List<AgentNode> found = nodes.findAllByTenantIdAndHostIdentifier(tenantId, host);
+        if (found.size() > 1) {
+            // 유니크 제약이 붙기 전에 생긴 중복. 이 경로가 유일한 자동 청소 기회다.
+            log.warn("중복 노드 {}건 정리 tenant={} host={}", found.size(), tenantId, host);
         }
+        // 최초 등록 시각은 가장 오래된 행에서 물려받는다
+        AgentNode previous = found.stream().min(Comparator.comparing(AgentNode::getEnrolledAt)).orElse(null);
+        if (previous != null) {
+            nodes.deleteAll(found);   // 해시가 PK 라 토큰을 새로 발급하면 행을 갈아끼워야 한다
+            // flush 가 없으면 Hibernate 가 INSERT 를 DELETE 보다 앞세워 유니크 제약에 걸린다
+            nodes.flush();
+        }
+        nodes.save(previous == null
+                ? AgentNode.enroll(Tokens.hash(nodeKey), tenantId, host, platform, now)
+                : AgentNode.reenroll(Tokens.hash(nodeKey), previous, platform, now));
         return Optional.of(nodeKey);
     }
 
