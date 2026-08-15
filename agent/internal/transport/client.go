@@ -82,6 +82,10 @@ type Client struct {
 
 	mu      sync.RWMutex
 	nodeKey string
+
+	// 재등록 직렬화용. mu 와 따로 둔다. 등록은 왕복이 걸리는데 그동안 nodeKey 읽기를 막으면
+	// 다른 고루틴이 통째로 멈춘다.
+	enrollMu sync.Mutex
 }
 
 // NewClient 는 클라이언트를 만든다. httpClient 가 nil 이면 Timeout 을 적용한 기본값을 쓴다.
@@ -128,8 +132,8 @@ func (c *Client) Enroll(ctx context.Context) error {
 // Heartbeat 는 수집 설정과 대기 중인 명령을 받아온다. 서버는 이 호출로 마지막 접속 시각을 갱신한다.
 func (c *Client) Heartbeat(ctx context.Context) (Heartbeat, error) {
 	var out Heartbeat
-	err := c.authed(ctx, func() error {
-		return c.post(ctx, "/api/agent/heartbeat", c.NodeKey(), struct{}{}, &out)
+	err := c.authed(ctx, func(nodeKey string) error {
+		return c.post(ctx, "/api/agent/heartbeat", nodeKey, struct{}{}, &out)
 	})
 	return out, err
 }
@@ -143,30 +147,44 @@ func (c *Client) SendEvents(ctx context.Context, events []event.Event) error {
 	body := struct {
 		Events []event.Event `json:"events"`
 	}{Events: events}
-	return c.authed(ctx, func() error {
-		return c.post(ctx, "/api/agent/events", c.NodeKey(), body, nil)
+	return c.authed(ctx, func(nodeKey string) error {
+		return c.post(ctx, "/api/agent/events", nodeKey, body, nil)
 	})
 }
 
 // ReportCommand 는 명령 실행 결과를 보고한다.
 func (c *Client) ReportCommand(ctx context.Context, result CommandResult) error {
-	return c.authed(ctx, func() error {
-		return c.post(ctx, "/api/agent/command-result", c.NodeKey(), result, nil)
+	return c.authed(ctx, func(nodeKey string) error {
+		return c.post(ctx, "/api/agent/command-result", nodeKey, result, nil)
 	})
 }
 
 // authed 는 요청을 실행하고, 인증이 거부되면 한 번 재등록한 뒤 다시 시도한다.
 // 이 재등록이 없으면 서버가 재시작해 node_key 를 잃은 순간부터 사람이 손댈 때까지 모든 요청이 막힌다.
 // 재시도는 한 번뿐이다. 반복하면 거부하는 서버에 계속 등록을 밀어 넣는다.
-func (c *Client) authed(ctx context.Context, do func() error) error {
-	err := do()
+// do 에 쓴 키를 넘겨받아야 재등록이 필요한지 판단할 수 있다.
+func (c *Client) authed(ctx context.Context, do func(nodeKey string) error) error {
+	used := c.NodeKey()
+	err := do(used)
 	if !errors.Is(err, ErrUnauthorized) {
 		return err
 	}
-	if err := c.Enroll(ctx); err != nil {
+	if err := c.reenroll(ctx, used); err != nil {
 		return err
 	}
-	return do()
+	return do(c.NodeKey())
+}
+
+// reenroll 은 used 가 아직 최신 키일 때만 새로 등록한다.
+// 고루틴 둘이 같은 401 을 보고 각자 등록하면, 재등록이 이전 토큰을 무효로 만들어 서로의 키를 죽인다.
+// 잠그기만 하고 이 검사를 빼면 순서대로 두 번 등록해 같은 핑퐁이 난다.
+func (c *Client) reenroll(ctx context.Context, used string) error {
+	c.enrollMu.Lock()
+	defer c.enrollMu.Unlock()
+	if c.NodeKey() != used {
+		return nil // 다른 고루틴이 이미 받아 왔다
+	}
+	return c.Enroll(ctx)
 }
 
 func (c *Client) post(ctx context.Context, path, nodeKey string, body, out any) error {
