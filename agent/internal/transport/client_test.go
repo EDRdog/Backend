@@ -341,3 +341,29 @@ func TestConcurrentUnauthorizedEnrollsOnce(t *testing.T) {
 		t.Errorf("NodeKey = %q, want key-2", c.NodeKey())
 	}
 }
+
+// 업링크에 얼마나 쓰는지는 서버가 알 수 없다. 에이전트가 자기 시계로 잰 값을 다음 전송에 실어 보낸다(#181).
+func TestSendEventsReportsPreviousRTT(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+	batch := []event.Event{{Type: event.TypeProcess}}
+
+	for i := 0; i < 2; i++ {
+		if err := c.SendEvents(context.Background(), batch); err != nil {
+			t.Fatalf("SendEvents %d: %v", i, err)
+		}
+	}
+
+	calls := s.calls("/api/agent/events")
+	// 첫 전송은 실을 값이 없다. 0 을 보내면 왕복이 0ms 였다는 뜻이 돼 지표가 왜곡된다.
+	if v, ok := calls[0].body["prev_send_us"]; ok {
+		t.Errorf("첫 전송에 prev_send_us = %v, want 없음", v)
+	}
+	v, ok := calls[1].body["prev_send_us"].(float64)
+	if !ok {
+		t.Fatalf("두 번째 전송 prev_send_us = %#v", calls[1].body["prev_send_us"])
+	}
+	if v < 0 {
+		t.Errorf("prev_send_us = %v, 음수다", v)
+	}
+}

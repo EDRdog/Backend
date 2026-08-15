@@ -86,6 +86,10 @@ type Client struct {
 	// 재등록 직렬화용. mu 와 따로 둔다. 등록은 왕복이 걸리는데 그동안 nodeKey 읽기를 막으면
 	// 다른 고루틴이 통째로 멈춘다.
 	enrollMu sync.Mutex
+
+	// 직전 events 전송에 걸린 왕복 시간. 다음 전송에 실어 서버가 업링크를 집계하게 한다(#181).
+	prevSendMu sync.Mutex
+	prevSend   time.Duration
 }
 
 // NewClient 는 클라이언트를 만든다. httpClient 가 nil 이면 Timeout 을 적용한 기본값을 쓴다.
@@ -146,10 +150,36 @@ func (c *Client) SendEvents(ctx context.Context, events []event.Event) error {
 	}
 	body := struct {
 		Events []event.Event `json:"events"`
-	}{Events: events}
-	return c.authed(ctx, func(nodeKey string) error {
+		// 첫 전송은 실을 값이 없어 생략한다. 0 을 보내면 왕복이 0 이었다는 뜻이 된다.
+		// ms 로 실으면 가까운 서버 상대로는 늘 0 이라 밀리초가 아니라 마이크로초다.
+		PrevSendUs int64 `json:"prev_send_us,omitempty"`
+	}{Events: events, PrevSendUs: c.takePrevSend()}
+
+	start := time.Now()
+	err := c.authed(ctx, func(nodeKey string) error {
 		return c.post(ctx, "/api/agent/events", nodeKey, body, nil)
 	})
+	// 실패한 전송은 재시도·타임아웃이 섞여 업링크 지표로 못 쓴다.
+	if err == nil {
+		c.setPrevSend(time.Since(start))
+	}
+	return err
+}
+
+// takePrevSend 는 실어 보낼 직전 왕복 시간을 마이크로초로 돌려주고 비운다.
+// 비우지 않으면 전송이 멎은 동안 같은 값이 계속 실려 지표가 그 값에 눌린다.
+func (c *Client) takePrevSend() int64 {
+	c.prevSendMu.Lock()
+	defer c.prevSendMu.Unlock()
+	us := c.prevSend.Microseconds()
+	c.prevSend = 0
+	return us
+}
+
+func (c *Client) setPrevSend(d time.Duration) {
+	c.prevSendMu.Lock()
+	defer c.prevSendMu.Unlock()
+	c.prevSend = d
 }
 
 // ReportCommand 는 명령 실행 결과를 보고한다.
