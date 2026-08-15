@@ -3,6 +3,8 @@ package com.edrdog.archiverservice;
 import com.edrdog.archiverservice.clickhouse.ClickHouseWriter;
 import com.edrdog.schema.Event;
 import com.edrdog.schema.EventSerializer;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -43,6 +45,9 @@ class EventListenerKafkaTest {
     @Autowired
     EmbeddedKafkaBroker broker;
 
+    @Autowired
+    MeterRegistry meters;
+
     @MockitoBean
     ClickHouseWriter writer;
 
@@ -66,5 +71,10 @@ class EventListenerKafkaTest {
         verify(writer, timeout(15_000))
                 .insert(argThat((List<Event> batch) ->
                         batch.stream().anyMatch(e -> "host-1".equals(e.getHost()))));
+
+        // 발행에서 소비까지의 대기는 어느 스팬에도 안 잡힌다. 여기서 재지 않으면 집계할 숫자가 없다(#181).
+        Timer lag = meters.find("events.kafka.lag").timer();
+        org.junit.jupiter.api.Assertions.assertNotNull(lag, "events.kafka.lag 미터가 없다");
+        org.junit.jupiter.api.Assertions.assertTrue(lag.count() >= 1, "lag 표본이 없다");
     }
 }
