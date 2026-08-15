@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ type recorded struct {
 // stub 은 docs/agent-protocol.md 의 서버 쪽을 흉내낸다.
 type stub struct {
 	server    *httptest.Server
+	mu        sync.Mutex
 	got       []recorded
 	nodeKey   string
 	commands  []Command
@@ -38,7 +40,10 @@ func newStub(t *testing.T) *stub {
 			http.Error(w, `{"error":"invalid_enroll_secret"}`, http.StatusUnauthorized)
 			return
 		}
-		writeJSON(w, map[string]any{"node_key": s.nodeKey})
+		s.mu.Lock()
+		key := s.nodeKey
+		s.mu.Unlock()
+		writeJSON(w, map[string]any{"node_key": key})
 	})
 
 	mux.HandleFunc("/api/agent/heartbeat", func(w http.ResponseWriter, r *http.Request) {
@@ -79,10 +84,20 @@ func newStub(t *testing.T) *stub {
 	return s
 }
 
+// rotate 는 서버가 발급 키를 갈아치운 상황을 만든다. 이전 키로 오는 요청은 이제 401 이다.
+func (s *stub) rotate(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nodeKey = key
+}
+
 func (s *stub) authed(t *testing.T, r *http.Request, w http.ResponseWriter) bool {
 	t.Helper()
 	s.record(t, r)
-	if r.Header.Get("X-Node-Key") != s.nodeKey {
+	s.mu.Lock()
+	want := s.nodeKey
+	s.mu.Unlock()
+	if r.Header.Get("X-Node-Key") != want {
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
 	}
@@ -93,11 +108,15 @@ func (s *stub) record(t *testing.T, r *http.Request) map[string]any {
 	t.Helper()
 	var body map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&body)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.got = append(s.got, recorded{path: r.URL.Path, nodeKey: r.Header.Get("X-Node-Key"), body: body})
 	return body
 }
 
 func (s *stub) calls(path string) []recorded {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []recorded
 	for _, r := range s.got {
 		if r.path == path {
@@ -282,5 +301,43 @@ func TestReportCommandSendsResult(t *testing.T) {
 	body := s.calls("/api/agent/command-result")[0].body
 	if body["command_id"] != "c1" || body["status"] != StatusKilled {
 		t.Errorf("결과 본문 = %v", body)
+	}
+}
+
+// 고루틴 둘이 같은 401 을 보고 각자 재등록하면 서로의 node_key 를 죽여 핑퐁이 된다(#281).
+// 서버가 키를 갈아치운 뒤 두 요청을 동시에 태워, 재등록이 한 번만 나가는지 본다.
+func TestConcurrentUnauthorizedEnrollsOnce(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+	s.rotate("key-2")
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		_, errs[0] = c.Heartbeat(context.Background())
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		errs[1] = c.ReportCommand(context.Background(), CommandResult{CommandID: "c1", Status: StatusKilled})
+	}()
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("요청 %d: %v", i, err)
+		}
+	}
+	// 최초 1회 + 재등록 1회. 3회면 둘이 각자 등록해 서로의 키를 죽인 것이다.
+	if n := len(s.calls("/api/agent/enroll")); n != 2 {
+		t.Errorf("enroll 호출 = %d, want 2", n)
+	}
+	if c.NodeKey() != "key-2" {
+		t.Errorf("NodeKey = %q, want key-2", c.NodeKey())
 	}
 }
