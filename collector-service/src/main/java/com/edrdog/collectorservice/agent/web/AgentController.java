@@ -50,6 +50,7 @@ public class AgentController {
             @RequestHeader(name = NODE_KEY_HEADER, required = false) String nodeKey,
             @RequestBody EventsRequest req) {
         AgentNode node = authenticate(nodeKey);
+        service.recordUplink(req.prevSendUs());
         return new EventsResponse(service.publish(node, req.events()));
     }
 

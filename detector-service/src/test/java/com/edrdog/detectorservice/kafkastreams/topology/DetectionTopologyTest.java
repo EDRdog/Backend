@@ -109,6 +109,18 @@ class DetectionTopologyTest {
     }
 
     @Test
+    @DisplayName("발행에서 소비까지의 대기를 잰다")
+    void kafkaLag_isRecorded() {
+        // 프로듀서 스팬에도 컨슈머 스팬에도 안 잡히는 구간이라 여기서 재지 않으면 집계할 숫자가 없다(#181).
+        events.pipeInput("k", process("host-1", "winword.exe", "explorer.exe", 1000));
+        settle();
+
+        var lag = metrics.find("events.kafka.lag").timer();
+        assertThat(lag).isNotNull();
+        assertThat(lag.count()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("알림을 발행하면 룰별 카운터가 오른다")
     void alertCounter_incrementsByRule() {
         // 도착 순서를 뒤섞어도 탐지 건수가 같다는 것을 지표로 보여주려면 이 카운터가 있어야 한다.
