@@ -3,6 +3,7 @@ package com.edrdog.archiverservice;
 import com.edrdog.archiverservice.clickhouse.ClickHouseWriter;
 import com.edrdog.schema.Event;
 import com.edrdog.schema.KafkaTraceLink;
+import com.edrdog.schema.TraceAttribute;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.List;
@@ -46,11 +47,16 @@ public class EventListener {
         // 서비스 맵은 일부만 이어져도 그려지므로 그걸로 충분하다.
         if (!records.isEmpty()) {
             KafkaTraceLink.accept(records.get(0).headers());
-        }
-        // 프로듀서가 타임스탬프를 지정하지 않아 레코드 시각은 Kafka 가 박은 발행 시각이다.
-        long now = System.currentTimeMillis();
-        for (var record : records) {
-            lag.record(now - record.timestamp(), TimeUnit.MILLISECONDS);
+            // 프로듀서가 타임스탬프를 지정하지 않아 레코드 시각은 Kafka 가 박은 발행 시각이다.
+            long now = System.currentTimeMillis();
+            long worst = 0;
+            for (var record : records) {
+                long lagMs = now - record.timestamp();
+                lag.record(lagMs, TimeUnit.MILLISECONDS);
+                worst = Math.max(worst, lagMs);
+            }
+            // 운영은 Micrometer 를 안 내보낸다. 이 배치에서 가장 오래 기다린 값을 실어야 거기서 보인다.
+            TraceAttribute.number("kafkaLagMs", worst);
         }
         writer.insert(records.stream().map(ConsumerRecord::value).toList());
     }

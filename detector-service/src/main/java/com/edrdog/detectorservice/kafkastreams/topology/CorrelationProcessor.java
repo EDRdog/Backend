@@ -4,6 +4,7 @@ import com.edrdog.detectorservice.dto.Alert;
 import com.edrdog.schema.Event;
 import com.edrdog.detectorservice.rule.Rules;
 import com.edrdog.schema.KafkaTraceLink;
+import com.edrdog.schema.TraceAttribute;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -107,8 +108,14 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
         // 배치의 나머지 레코드가 전부 출처를 잃는다. 판정 로직은 그대로 두고 감싸기만 한다.
         // 레코드 시각은 collector 가 발행한 시각이다(커스텀 TimestampExtractor 가 없고, repartition 도
         // 원본 시각을 그대로 넘긴다). 지금과 빼면 Kafka 를 건너는 데 걸린 시간이 나온다(#181).
-        kafkaLag.record(System.currentTimeMillis() - record.timestamp(), TimeUnit.MILLISECONDS);
-        KafkaTraceLink.linked(record.headers(), () -> processRecord(record));
+        long lagMs = System.currentTimeMillis() - record.timestamp();
+        kafkaLag.record(lagMs, TimeUnit.MILLISECONDS);
+        KafkaTraceLink.linked(record.headers(), () -> {
+            // 트랜잭션은 linked 가 연다. 밖에서 심으면 실릴 곳이 없다.
+            // 운영은 Micrometer 를 안 내보내므로 이 줄이 없으면 뉴렐릭에서 이 값을 못 본다.
+            TraceAttribute.number("kafkaLagMs", lagMs);
+            processRecord(record);
+        });
     }
 
     private void processRecord(Record<String, Event> record) {
