@@ -156,7 +156,12 @@ echo
 # 패딩(=)은 URL 에 안 들어간다. /alerts/policies/detail/<id> 같은 경로는 404 다.
 GUID=$(printf '%s' "$ACCOUNT|AIOPS|POLICY|$POLICY_ID" | base64 | tr -d '=\n')
 echo "정책: https://one.newrelic.com/redirect/entity/$GUID?account=$ACCOUNT"
-echo "⚠️ 알림 채널(Slack·메일)은 아직 없다. Alerts → Destinations 에서 붙여야 실제로 도착한다."
+# 채널은 2026-08-12 에 붙었다. "파이프라인 정지 → Slack" 워크플로가 Slack 으로 보낸다.
+#
+# 그 워크플로는 조건 이름을 나열하지 않고 정책 하나(EDRdog 파이프라인 정지, id 7881843)로 거른다.
+# 그래서 이 스크립트가 만드는 조건은 이름을 바꿔도 자동으로 알림이 간다. 조건 이름으로 거르는
+# 방식이었다면 이름을 바꿀 때마다 워크플로도 같이 고쳐야 했다.
+echo "알림: '파이프라인 정지 → Slack' 워크플로가 이 정책 전체를 받아 Slack 으로 보낸다."
 
 # 초록불로 끝내면 안 된다. 조건 하나가 안 붙은 것을 모르고 넘어가는 것이 #285 였다.
 exit "$FAILED"
