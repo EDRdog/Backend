@@ -1,0 +1,42 @@
+name: NRQL
+
+# NRQL 한 번 돌리고 결과를 로그에 찍는다.
+#
+# 왜 필요한가: 뉴렐릭 쿼리 화면이 자주 멈춰서 값을 못 본다. 그리고 NerdGraph 를 부를 User key 는
+# 이 레포 시크릿에만 있고 개인 노트북에는 없다. 측정 결과를 숫자로 남겨야 하는 작업(#181, #183)에서
+# 화면이 뜨는지 여부에 매번 발이 묶인다.
+#
+# 읽기 전용이다. 이 워크플로로 무엇을 바꿀 수는 없다.
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: 'NRQL (예: SELECT count(*) FROM Metric WHERE metricName = ... SINCE 20 minutes ago)'
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 쿼리 실행
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          ACCOUNT: '8385315'
+          QUERY: ${{ inputs.query }}
+        run: |
+          if [ -z "${NEW_RELIC_API_KEY:-}" ]; then
+            echo "NEW_RELIC_API_KEY(User key)가 없다. 라이선스 키로는 안 된다." >&2
+            exit 1
+          fi
+          # NRQL 에 따옴표가 들어가므로 jq 로 감싸 넣는다. 문자열을 손으로 이어 붙이면 깨진다.
+          GQL=$(jq -n --arg a "$ACCOUNT" --arg q "$QUERY" \
+            '{query: "{actor{account(id:\($a)){nrql(query:\"\($q|gsub("\"";"\\\""))\"){results}}}}"}')
+          RESP=$(curl -sS https://api.newrelic.com/graphql \
+            -H "Api-Key: $NEW_RELIC_API_KEY" -H 'Content-Type: application/json' \
+            --data-binary "$GQL")
+          echo "$RESP" | jq -e '.errors' > /dev/null 2>&1 && {
+            echo "쿼리 오류:" >&2
+            echo "$RESP" | jq -r '.errors[].message' >&2
+            exit 1
+          }
+          echo "$RESP" | jq '.data.actor.account.nrql.results'

@@ -3,6 +3,7 @@ package com.edrdog.collectorservice.agent;
 import com.edrdog.collectorservice.RawEventMapper;
 import com.edrdog.collectorservice.agent.domain.AgentNode;
 import com.edrdog.collectorservice.agent.repository.AgentNodeRepository;
+import com.edrdog.schema.TraceAttribute;
 import com.edrdog.schema.Event;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,6 +55,8 @@ public class AgentService {
             return;
         }
         uplink.record(prevSendUs, TimeUnit.MICROSECONDS);
+        // 운영은 Micrometer 를 안 내보낸다. 이 줄이 없으면 고객사 네트워크 구간이 계속 안 보인다.
+        TraceAttribute.number("uplinkRttUs", prevSendUs);
     }
 
     /**

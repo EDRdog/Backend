@@ -22,7 +22,8 @@ import java.util.stream.StreamSupport;
  * 켜져 있으면 폴 단위 트랜잭션이 이미 열려 있어서, 아래 {@code @Trace(dispatcher = true)} 가
  * 새 트랜잭션이 아니라 기존 트랜잭션의 구간이 되어 버린다.
  *
- * <p>벤더 API 를 이 클래스에만 두었다. 관측 백엔드를 옮기면 여기만 걷어내면 된다.
+ * <p>벤더 API 를 쓰는 자리는 이 클래스와 {@link TraceAttribute} 둘뿐이다. 관측 백엔드를 옮기면
+ * 그 둘만 걷어내면 된다.
  * 에이전트가 없으면 API 가 알아서 아무 일도 안 하므로 로컬 실행과 테스트에 영향이 없다.
  *
  * <p>events 토픽을 쓰는 쪽이 다 같이 필요해서 event-schema 에 둔다. 헤더 규약을 정의한
