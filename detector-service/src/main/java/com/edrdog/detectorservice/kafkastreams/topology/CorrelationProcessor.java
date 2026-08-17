@@ -6,6 +6,7 @@ import com.edrdog.detectorservice.rule.Rules;
 import com.edrdog.schema.KafkaTraceLink;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.PunctuationType;
 import org.apache.kafka.streams.processor.api.Processor;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * host(key) 별 이벤트 버퍼를 유지하며 시퀀스 상관분석을 수행.
@@ -42,6 +44,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
     private final long graceMs;
     private final MeterRegistry metrics;
     private final DistributionSummary lateness;
+    private final Timer kafkaLag;
 
     private KeyValueStore<String, EventBuffer> store;
     private ProcessorContext<String, Alert> ctx;
@@ -60,6 +63,10 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
         this.windowMs = windowMs;
         this.graceMs = graceMs;
         this.metrics = metrics;
+        this.kafkaLag = Timer.builder("events.kafka.lag")
+                .description("events 발행에서 소비까지의 대기 — 컨슈머 랙이 늘 때 가장 먼저 커지는 값")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(metrics);
         this.lateness = DistributionSummary.builder("cep.event.lateness")
                 .description("이벤트가 같은 host 의 최신 이벤트 시각 대비 얼마나 뒤처져 도착했는지 — grace 값 산정 근거")
                 .baseUnit("ms")
@@ -98,6 +105,9 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
         // Kafka 를 건너도 트레이스가 이어지게 레코드마다 트랜잭션을 연다(#235).
         // Streams 는 폴 단위로 트랜잭션을 열어 배치에 부모를 하나만 달 수 있어서, 여기서 직접 열지 않으면
         // 배치의 나머지 레코드가 전부 출처를 잃는다. 판정 로직은 그대로 두고 감싸기만 한다.
+        // 레코드 시각은 collector 가 발행한 시각이다(커스텀 TimestampExtractor 가 없고, repartition 도
+        // 원본 시각을 그대로 넘긴다). 지금과 빼면 Kafka 를 건너는 데 걸린 시간이 나온다(#181).
+        kafkaLag.record(System.currentTimeMillis() - record.timestamp(), TimeUnit.MILLISECONDS);
         KafkaTraceLink.linked(record.headers(), () -> processRecord(record));
     }
 

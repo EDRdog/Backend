@@ -5,6 +5,8 @@ import com.edrdog.schema.Event;
 import com.edrdog.collectorservice.responder.AgentCommand;
 import com.edrdog.collectorservice.responder.ResponderClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +56,9 @@ class AgentIngestIntegrationTest {
 
     @Autowired
     private AgentNodeRepository nodes;
+
+    @Autowired
+    private MeterRegistry meters;
 
     @MockitoBean
     private EventsProducer producer;          // Kafka 대신 목: 발행 인자만 검증
@@ -115,6 +120,34 @@ class AgentIngestIntegrationTest {
                         .content("{\"command_id\":\"cmd-1\",\"status\":\"KILLED\",\"message\":\"pid 4242 종료\"}"))
                 .andExpect(status().isOk());
         verify(responder, times(1)).reportCommandResult("cmd-1", "KILLED", "pid 4242 종료");
+    }
+
+    /**
+     * 업링크에 얼마나 썼는지는 서버가 알 수 없다. 자기 인바운드 처리 시간만 알기 때문이다.
+     * 에이전트가 자기 시계로 잰 값을 실어 보내면 그걸 집계한다(#181).
+     */
+    @Test
+    void 에이전트가_보고한_전송_왕복시간을_집계한다() throws Exception {
+        when(producer.publish(any(Event.class))).thenReturn(true);
+        String nodeKey = enroll("mac-006", "darwin");
+        Timer before = meters.find("agent.uplink.rtt").timer();
+        long baseline = before == null ? 0 : before.count();
+
+        String body = """
+                {"prev_send_us":12345,"events":[
+                  {"host":"mac-006","type":"process","ts":1785341400000,"process":"sh"}
+                ]}
+                """;
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accepted").value(1));
+
+        Timer rtt = meters.find("agent.uplink.rtt").timer();
+        assertEquals(baseline + 1, rtt.count());
+        assertEquals(12.345, rtt.totalTime(java.util.concurrent.TimeUnit.MILLISECONDS), 0.001);
     }
 
     /** 검증에서 걸린 건은 발행하지 않고 accepted 에서도 빠진다(에이전트가 배치를 지워도 무방한 건수여야 한다). */

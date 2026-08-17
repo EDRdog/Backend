@@ -6,12 +6,15 @@ import com.edrdog.collectorservice.agent.repository.AgentNodeRepository;
 import com.edrdog.schema.Event;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -25,12 +28,32 @@ public class AgentService {
     private final TenantResolverClient tenants;
     private final AgentNodeRepository nodes;
     private final EventsProducer producer;
+    private final Timer uplink;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public AgentService(TenantResolverClient tenants, AgentNodeRepository nodes, EventsProducer producer) {
+    /** 에이전트가 보고한 값의 상한. 이걸 넘으면 시계가 어긋났거나 값이 깨진 것이라 지표를 오염시킨다. */
+    private static final long UPLINK_MAX_US = TimeUnit.MINUTES.toMicros(1);
+
+    public AgentService(TenantResolverClient tenants, AgentNodeRepository nodes, EventsProducer producer,
+                        MeterRegistry metrics) {
         this.tenants = tenants;
         this.nodes = nodes;
         this.producer = producer;
+        this.uplink = Timer.builder("agent.uplink.rtt")
+                .description("에이전트가 잰 events 전송 왕복 시간 — 고객사 네트워크를 타는 유일한 구간")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(metrics);
+    }
+
+    /**
+     * 에이전트가 자기 시계로 잰 직전 전송 왕복 시간을 집계한다.
+     * 두 기기의 시계를 빼지 않아 시계 오차가 섞이지 않는다. 대신 서버 처리 시간이 포함된 값이다.
+     */
+    public void recordUplink(Long prevSendUs) {
+        if (prevSendUs == null || prevSendUs <= 0 || prevSendUs > UPLINK_MAX_US) {
+            return;
+        }
+        uplink.record(prevSendUs, TimeUnit.MICROSECONDS);
     }
 
     /**
