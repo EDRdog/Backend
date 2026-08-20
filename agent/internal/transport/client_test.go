@@ -1,9 +1,12 @@
 package transport
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -14,9 +17,11 @@ import (
 )
 
 type recorded struct {
-	path    string
-	nodeKey string
-	body    map[string]any
+	path     string
+	nodeKey  string
+	body     map[string]any
+	encoding string // Content-Encoding 헤더. 압축했는지 확인한다
+	wire     int    // 실제로 네트워크를 탄 바이트
 }
 
 // stub 은 docs/agent-protocol.md 의 서버 쪽을 흉내낸다.
@@ -104,13 +109,43 @@ func (s *stub) authed(t *testing.T, r *http.Request, w http.ResponseWriter) bool
 	return true
 }
 
+// record 는 collector 의 해제 필터와 같은 판단을 한다. 헤더가 있으면 풀고, 없으면 그대로 읽는다.
 func (s *stub) record(t *testing.T, r *http.Request) map[string]any {
 	t.Helper()
-	var body map[string]any
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	raw, _ := io.ReadAll(r.Body)
+	encoding := r.Header.Get("Content-Encoding")
+	body := decodeBody(t, raw, encoding)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.got = append(s.got, recorded{path: r.URL.Path, nodeKey: r.Header.Get("X-Node-Key"), body: body})
+	s.got = append(s.got, recorded{
+		path:     r.URL.Path,
+		nodeKey:  r.Header.Get("X-Node-Key"),
+		body:     body,
+		encoding: encoding,
+		wire:     len(raw),
+	})
+	return body
+}
+
+func decodeBody(t *testing.T, raw []byte, encoding string) map[string]any {
+	t.Helper()
+	var body map[string]any
+	if encoding != "gzip" {
+		_ = json.Unmarshal(raw, &body)
+		return body
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("gzip 해제 실패: %v", err)
+	}
+	defer gz.Close()
+	plain, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("gzip 읽기 실패: %v", err)
+	}
+	if err := json.Unmarshal(plain, &body); err != nil {
+		t.Fatalf("푼 본문이 JSON 이 아니다: %v", err)
+	}
 	return body
 }
 
@@ -239,6 +274,75 @@ func TestSendEventsPostsEnvelope(t *testing.T) {
 	data, ok := body["events"].([]any)
 	if !ok || len(data) != 1 {
 		t.Fatalf("events = %#v", body["events"])
+	}
+}
+
+// 에이전트 → collector 는 고객사 네트워크를 타는 유일한 구간이라 여기만 압축이 이득이다(#183).
+// 이벤트 배열은 같은 필드명이 레코드마다 반복돼 압축률이 높다.
+func TestSendEventsCompressesLargeBatch(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+
+	f := event.Factory{Host: "mac-1"}
+	var batch []event.Event
+	for i := 0; i < 50; i++ {
+		batch = append(batch, f.Process(time.Unix(1, 0), event.ProcessInfo{
+			Path: "/bin/sh", Cmdline: "sh -c whoami", Parent: "bash",
+		}))
+	}
+	if err := c.SendEvents(context.Background(), batch); err != nil {
+		t.Fatalf("SendEvents: %v", err)
+	}
+
+	got := s.calls("/api/agent/events")[0]
+	if got.encoding != "gzip" {
+		t.Fatalf("Content-Encoding = %q, gzip 이어야 한다", got.encoding)
+	}
+	data, ok := got.body["events"].([]any)
+	if !ok || len(data) != len(batch) {
+		t.Fatalf("푼 본문의 events = %#v", got.body["events"])
+	}
+	raw, err := json.Marshal(map[string]any{"events": batch})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if got.wire >= len(raw) {
+		t.Fatalf("압축 후 %d 바이트, 압축 전 %d 바이트. 줄지 않았다", got.wire, len(raw))
+	}
+}
+
+// gzip 헤더·트레일러만 18바이트다. 수백 바이트짜리 enroll·heartbeat 는 압축하면 오히려 커진다.
+func TestSmallRequestsAreNotCompressed(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+
+	if _, err := c.Heartbeat(context.Background()); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+
+	for _, path := range []string{"/api/agent/enroll", "/api/agent/heartbeat"} {
+		for _, got := range s.calls(path) {
+			if got.encoding != "" {
+				t.Fatalf("%s Content-Encoding = %q, 압축하지 않아야 한다", path, got.encoding)
+			}
+		}
+	}
+}
+
+// 서버는 압축 안 된 요청도 그대로 받는다. 구버전 에이전트가 계속 그렇게 보내기 때문이다.
+func TestSendEventsSkipsCompressionForSmallBatch(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+
+	f := event.Factory{Host: "mac-1"}
+	e := f.Process(time.Unix(1, 0), event.ProcessInfo{Path: "/bin/sh", Cmdline: "sh"})
+	if err := c.SendEvents(context.Background(), []event.Event{e}); err != nil {
+		t.Fatalf("SendEvents: %v", err)
+	}
+
+	got := s.calls("/api/agent/events")[0]
+	if got.encoding != "" {
+		t.Fatalf("Content-Encoding = %q, 한 건짜리 배치는 압축하지 않아야 한다", got.encoding)
 	}
 }
 

@@ -3,6 +3,7 @@ package transport
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -217,16 +218,43 @@ func (c *Client) reenroll(ctx context.Context, used string) error {
 	return c.Enroll(ctx)
 }
 
+// gzipMinBytes 아래는 압축하지 않는다. gzip 헤더·트레일러만 18바이트라 수백 바이트짜리
+// enroll·heartbeat 는 압축하면 오히려 커진다. 실질적으로 events 배치만 압축된다.
+const gzipMinBytes = 1024
+
+// compress 는 큰 본문만 gzip 으로 감싸고, 압축했는지 알려준다.
+// 레벨은 기본값이다. BestCompression 은 CPU 를 훨씬 더 쓰고 이득은 몇 %인데,
+// EDR 에이전트가 고객 단말 CPU 를 먹는 것 자체가 문제라 여기선 기본이 맞다.
+func compress(payload []byte) ([]byte, bool) {
+	if len(payload) < gzipMinBytes {
+		return payload, false
+	}
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(payload); err != nil {
+		return payload, false // 압축이 안 되면 그냥 보낸다. 서버는 헤더 없는 요청도 받는다
+	}
+	if err := gz.Close(); err != nil {
+		return payload, false
+	}
+	return buf.Bytes(), true
+}
+
 func (c *Client) post(ctx context.Context, path, nodeKey string, body, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("%s 요청 직렬화 실패: %w", path, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+path, bytes.NewReader(payload))
+	wire, compressed := compress(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+path, bytes.NewReader(wire))
 	if err != nil {
 		return fmt.Errorf("%s 요청 생성 실패: %w", path, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// 서버가 이 헤더를 보고 푼다. 헤더가 없으면 본문을 그대로 읽으므로 구버전 서버여도 깨지지 않는다.
+	if compressed {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
 	if nodeKey != "" {
 		req.Header.Set("X-Node-Key", nodeKey)
 	}
