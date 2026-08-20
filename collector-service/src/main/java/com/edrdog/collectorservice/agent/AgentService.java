@@ -7,6 +7,7 @@ import com.edrdog.schema.TraceAttribute;
 import com.edrdog.schema.Event;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
@@ -30,6 +31,8 @@ public class AgentService {
     private final AgentNodeRepository nodes;
     private final EventsProducer producer;
     private final Timer uplink;
+    private final DistributionSummary wireBytes;
+    private final DistributionSummary rawBytes;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** 에이전트가 보고한 값의 상한. 이걸 넘으면 시계가 어긋났거나 값이 깨진 것이라 지표를 오염시킨다. */
@@ -44,6 +47,14 @@ public class AgentService {
                 .description("에이전트가 잰 events 전송 왕복 시간 — 고객사 네트워크를 타는 유일한 구간")
                 .publishPercentiles(0.5, 0.95, 0.99)
                 .register(metrics);
+        this.wireBytes = DistributionSummary.builder("agent.uplink.wire.bytes")
+                .description("events 요청이 실제로 네트워크를 탄 바이트 — 압축 후")
+                .baseUnit("bytes")
+                .register(metrics);
+        this.rawBytes = DistributionSummary.builder("agent.uplink.raw.bytes")
+                .description("events 요청 본문을 푼 바이트 — 압축 전")
+                .baseUnit("bytes")
+                .register(metrics);
     }
 
     /**
@@ -57,6 +68,18 @@ public class AgentService {
         uplink.record(prevSendUs, TimeUnit.MICROSECONDS);
         // 운영은 Micrometer 를 안 내보낸다. 이 줄이 없으면 고객사 네트워크 구간이 계속 안 보인다.
         TraceAttribute.number("uplinkRttUs", prevSendUs);
+    }
+
+    /**
+     * events 요청의 압축 전/후 바이트를 집계한다. 같은 요청에서 둘을 재야 압축률을 나눌 수 있다.
+     * 압축하지 않은 요청은 두 값이 같아, 그대로 압축 전 기준선이 된다.
+     */
+    public void recordUplinkBytes(long wire, long raw) {
+        wireBytes.record(wire);
+        rawBytes.record(raw);
+        // 운영은 Micrometer 를 안 내보낸다. 이 두 줄이 없으면 압축 효과를 운영에서 못 잰다.
+        TraceAttribute.number("uplinkWireBytes", wire);
+        TraceAttribute.number("uplinkRawBytes", raw);
     }
 
     /**

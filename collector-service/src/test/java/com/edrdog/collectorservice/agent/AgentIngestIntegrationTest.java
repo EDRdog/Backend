@@ -6,6 +6,7 @@ import com.edrdog.collectorservice.responder.AgentCommand;
 import com.edrdog.collectorservice.responder.ResponderClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Timer;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -18,8 +19,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -148,6 +152,88 @@ class AgentIngestIntegrationTest {
         Timer rtt = meters.find("agent.uplink.rtt").timer();
         assertEquals(baseline + 1, rtt.count());
         assertEquals(12.345, rtt.totalTime(java.util.concurrent.TimeUnit.MILLISECONDS), 0.001);
+    }
+
+    private static byte[] gzip(String body) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream gz = new GZIPOutputStream(out)) {
+            gz.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        return out.toByteArray();
+    }
+
+    /**
+     * 에이전트 → collector 는 고객사 네트워크를 타는 유일한 구간이라 여기만 압축이 이득이다(#183).
+     * Tomcat 은 요청 본문을 자동으로 풀지 않으므로 필터가 없으면 이 요청이 깨진다.
+     */
+    @Test
+    void gzip_으로_압축된_요청을_풀어서_받는다() throws Exception {
+        when(producer.publish(any(Event.class))).thenReturn(true);
+        String nodeKey = enroll("mac-007", "darwin");
+
+        String body = """
+                {"events":[
+                  {"host":"mac-007","type":"process","ts":1785341400000,"process":"sh","cmdline":"sh -c id"}
+                ]}
+                """;
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .header("Content-Encoding", "gzip")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(gzip(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accepted").value(1));
+
+        ArgumentCaptor<Event> published = ArgumentCaptor.forClass(Event.class);
+        verify(producer, times(1)).publish(published.capture());
+        assertEquals("mac-007", published.getValue().getHost());
+    }
+
+    /**
+     * 상한이 없으면 몇 KB 짜리 요청이 수 GB 로 풀려, 인증된 에이전트 하나로 collector 를 죽일 수 있다.
+     * 성능이 아니라 가용성 문제라 빼면 안 된다.
+     */
+    @Test
+    void 해제_크기_상한을_넘는_요청은_413_이고_발행하지_않는다() throws Exception {
+        String nodeKey = enroll("mac-008", "darwin");
+        String bomb = "{\"events\":[{\"host\":\"" + "a".repeat(9 * 1024 * 1024)
+                + "\",\"type\":\"process\",\"ts\":1785341400000}]}";
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .header("Content-Encoding", "gzip")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(gzip(bomb)))
+                .andExpect(status().isPayloadTooLarge());
+
+        verify(producer, never()).publish(any(Event.class));
+    }
+
+    /**
+     * 압축 전/후를 서버가 둘 다 잰다. 에이전트에서 재면 운영으로 올릴 경로가 없다.
+     * 헤더 없는 요청도 같은 자리에 남아야 압축 전 기준선이 생긴다.
+     */
+    @Test
+    void 압축_전후_바이트를_같은_요청에서_잰다() throws Exception {
+        when(producer.publish(any(Event.class))).thenReturn(true);
+        String nodeKey = enroll("mac-009", "darwin");
+
+        String body = ("{\"events\":[{\"host\":\"mac-009\",\"type\":\"process\",\"ts\":1785341400000,"
+                + "\"cmdline\":\"" + "sh -c id ".repeat(200) + "\"}]}");
+        byte[] compressed = gzip(body);
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .header("Content-Encoding", "gzip")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(compressed))
+                .andExpect(status().isOk());
+
+        DistributionSummary wire = meters.find("agent.uplink.wire.bytes").summary();
+        DistributionSummary raw = meters.find("agent.uplink.raw.bytes").summary();
+        assertEquals(compressed.length, wire.max(), 0.001);
+        assertEquals(body.getBytes(StandardCharsets.UTF_8).length, raw.max(), 0.001);
+        assertTrue(wire.max() < raw.max());
     }
 
     /** 검증에서 걸린 건은 발행하지 않고 accepted 에서도 빠진다(에이전트가 배치를 지워도 무방한 건수여야 한다). */
