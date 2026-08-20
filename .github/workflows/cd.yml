@@ -203,6 +203,21 @@ jobs:
           INFRA_DEPLOYS="$INFRA_DEPLOYS $(echo "$APPLIED" | grep '^deployment' || true)"
           done
 
+          # Kafka 는 영속 볼륨이 없어 파드가 새로 뜨면 토픽이 통째로 사라진다. 그런데 위 apply 는
+          # Deployment 와 topic-init Job 을 동시에 넣는다. 롤링 중에는 옛 파드가 아직 Ready 라
+          # Job 이 옛 브로커에 토픽을 만들고 성공으로 끝나고, 새 파드는 빈 채로 뜬다.
+          # 자동 생성을 껐으므로(#295) 그러면 아무도 토픽을 안 만들어 발행이 계속 실패한다.
+          # 자동 생성이 켜져 있던 동안은 이 경합을 서비스가 덮어 줬다. 그게 #295 의 원인이기도 하다.
+          # 새 파드가 Ready 가 된 뒤 Job 을 한 번 더 돌려서 순서를 강제한다.
+          if sudo kubectl -n "$NS" get deploy kafka >/dev/null 2>&1; then
+          sudo kubectl -n "$NS" rollout status deploy/kafka --timeout=180s || INFRA_FAILED="$INFRA_FAILED kafka"
+          sudo kubectl -n "$NS" delete job kafka-topic-init --ignore-not-found
+          git -C ~/Backend show "FETCH_HEAD:k8s/kafka.yaml" | sudo kubectl apply -f - >/dev/null
+          # 조용히 실패하면 발행이 통째로 막힌다. 여기서 확인하지 않으면 알 방법이 없다.
+          sudo kubectl -n "$NS" wait --for=condition=complete job/kafka-topic-init --timeout=120s \
+          || INFRA_FAILED="$INFRA_FAILED kafka-topic-init"
+          fi
+
           # 호스트의 Caddy 설정. k8s 밖이라 kubectl 로는 안 닿아서, 여기서 안 하면 아무도 조정하지 않는 유일한 조각으로 남는다.
           # 실제로 레포에 portainer 블록을 넣고도 서버는 계속 모른 채였고, 서브도메인이 인증서가 없어 TLS 핸드셰이크부터 깨졌다.
           CADDYFILE=$(mktemp)

@@ -1,4 +1,5 @@
 # Kafka (KRaft, 단일 노드), 영속성 없음. mysql·clickhouse 와 달리 볼륨을 안 주는 이유는 여기 남는 게 아직 소비되지 않은 메시지뿐이고, 토픽은 아래 init Job 이 다시 만들기 때문이다.
+# 자동 생성을 껐으므로 init Job 이 토픽을 만드는 유일한 경로다(#295). 여기에 토픽을 추가하지 않으면 그 토픽으로 보내는 쪽이 실패한다.
 # 리스너 2개:
 #   INTERNAL(9094) : 클러스터 내부용 -> kafka.edrdog.svc.cluster.local:9094
 #   EXTERNAL(9092) : 호스트용 (localhost:9092), NodePort 30092 로 노출
@@ -48,6 +49,14 @@ spec:
               value: "1"
             - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
               value: "0"
+            # 자동 생성을 켜 두면 프로듀서가 아래 init Job 보다 먼저 붙는 순간 토픽이 브로커 기본값
+            # (파티션 1, cleanup.policy=delete)으로 만들어지고, 그 뒤로는 아무도 못 고친다.
+            # Job 의 --if-not-exists 도 Streams 도 이미 있는 토픽 설정을 안 바꾼다. 실패가 조용하다.
+            # 실제로 events 가 1파티션으로 굳어 detector 의 num.stream.threads=3 이 무의미했고,
+            # changelog 가 compact 를 못 받아 3.5G 로 쌓였다(#295).
+            # Streams 내부 토픽은 AdminClient 로 만들어서 이걸 꺼도 영향받지 않는다.
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "false"
           readinessProbe:
             tcpSocket:
               port: 9092
