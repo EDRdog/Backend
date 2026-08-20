@@ -1,5 +1,6 @@
 package com.edrdog.collectorservice.agent.web;
 
+import com.edrdog.collectorservice.agent.AgentService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -39,14 +40,36 @@ public class GzipRequestFilter extends OncePerRequestFilter {
      */
     static final long MAX_DECOMPRESSED_BYTES = 8L * 1024 * 1024;
 
+    private static final String EVENTS_PATH = "/api/agent/events";
+
+    private final AgentService service;
+
+    public GzipRequestFilter(AgentService service) {
+        this.service = service;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
+        long wire = Math.max(req.getContentLengthLong(), 0);
         if (!"gzip".equalsIgnoreCase(req.getHeader(HttpHeaders.CONTENT_ENCODING))) {
             chain.doFilter(req, res);
+            record(req, wire, wire);   // 압축 전 기준선. 구버전 에이전트 트래픽이 그대로 비교 대상이 된다
             return;
         }
-        chain.doFilter(new GzipRequestWrapper(req), res);
+        GzipRequestWrapper wrapped = new GzipRequestWrapper(req);
+        chain.doFilter(wrapped, res);
+        record(req, wire, wrapped.decompressedBytes());
+    }
+
+    /**
+     * 압축 전/후를 서버가 둘 다 안다. wire 는 Content-Length, raw 는 풀면서 센 바이트다.
+     * 에이전트에서 재면 Go 쪽에 운영 관측 경로가 없어 값이 안 올라간다.
+     */
+    private void record(HttpServletRequest req, long wire, long raw) {
+        if (raw > 0 && raw <= MAX_DECOMPRESSED_BYTES && EVENTS_PATH.equals(req.getRequestURI())) {
+            service.recordUplinkBytes(wire, raw);
+        }
     }
 
     /** 본문만 푼 요청. 나머지는 원본에 그대로 위임한다. */
@@ -83,6 +106,10 @@ public class GzipRequestFilter extends OncePerRequestFilter {
         @Override
         public long getContentLengthLong() {
             return -1;
+        }
+
+        long decompressedBytes() {
+            return body.decompressedBytes();
         }
     }
 
@@ -124,6 +151,10 @@ public class GzipRequestFilter extends OncePerRequestFilter {
             if (read > MAX_DECOMPRESSED_BYTES) {
                 throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "decompressed_body_too_large");
             }
+        }
+
+        long decompressedBytes() {
+            return read;
         }
 
         @Override

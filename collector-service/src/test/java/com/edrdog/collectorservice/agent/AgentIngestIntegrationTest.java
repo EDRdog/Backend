@@ -6,6 +6,7 @@ import com.edrdog.collectorservice.responder.AgentCommand;
 import com.edrdog.collectorservice.responder.ResponderClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Timer;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -206,6 +207,33 @@ class AgentIngestIntegrationTest {
                 .andExpect(status().isPayloadTooLarge());
 
         verify(producer, never()).publish(any(Event.class));
+    }
+
+    /**
+     * 압축 전/후를 서버가 둘 다 잰다. 에이전트에서 재면 운영으로 올릴 경로가 없다.
+     * 헤더 없는 요청도 같은 자리에 남아야 압축 전 기준선이 생긴다.
+     */
+    @Test
+    void 압축_전후_바이트를_같은_요청에서_잰다() throws Exception {
+        when(producer.publish(any(Event.class))).thenReturn(true);
+        String nodeKey = enroll("mac-009", "darwin");
+
+        String body = ("{\"events\":[{\"host\":\"mac-009\",\"type\":\"process\",\"ts\":1785341400000,"
+                + "\"cmdline\":\"" + "sh -c id ".repeat(200) + "\"}]}");
+        byte[] compressed = gzip(body);
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .header("Content-Encoding", "gzip")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(compressed))
+                .andExpect(status().isOk());
+
+        DistributionSummary wire = meters.find("agent.uplink.wire.bytes").summary();
+        DistributionSummary raw = meters.find("agent.uplink.raw.bytes").summary();
+        assertEquals(compressed.length, wire.max(), 0.001);
+        assertEquals(body.getBytes(StandardCharsets.UTF_8).length, raw.max(), 0.001);
+        assertTrue(wire.max() < raw.max());
     }
 
     /** 검증에서 걸린 건은 발행하지 않고 accepted 에서도 빠진다(에이전트가 배치를 지워도 무방한 건수여야 한다). */
