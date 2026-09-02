@@ -6,6 +6,7 @@ import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.clickhouse.ClickHouseReader;
 import com.edrdog.apiservice.event.EventResponse;
 import com.edrdog.apiservice.query.EventQueryBuilder;
+import com.edrdog.apiservice.query.EventTrendQueryBuilder;
 import com.edrdog.apiservice.web.PageHeaders;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,13 +35,16 @@ public class EventQueryController {
 
     private final ClickHouseReader reader;
     private final EventQueryBuilder builder;
+    private final EventTrendQueryBuilder trendBuilder;
     private final AuthService auth;
     private final ObjectMapper mapper;
 
-    public EventQueryController(ClickHouseReader reader, EventQueryBuilder builder, AuthService auth,
+    public EventQueryController(ClickHouseReader reader, EventQueryBuilder builder,
+                                 EventTrendQueryBuilder trendBuilder, AuthService auth,
                                  ObjectMapper mapper) {
         this.reader = reader;
         this.builder = builder;
+        this.trendBuilder = trendBuilder;
         this.auth = auth;
         this.mapper = mapper;
     }
@@ -135,6 +139,22 @@ public class EventQueryController {
                 .mapToLong(row -> Long.parseLong(String.valueOf(row.get("cnt"))))
                 .sum();
         return Map.of("total", total, "byType", byType);
+    }
+
+    @Operation(summary = "이벤트 추세 (시간 단위)",
+            description = "로그인 유저의 tenant 것만 [from,to) 안에서 시간당 이벤트 수를 type 별로 준다(from/to 는 epoch millis, 필수).\n\n"
+                    + "원본 events 가 아니라 사전집계 롤업을 읽는다. 원본은 TTL 7일이라 그 뒤엔 답할 데이터가 없지만 "
+                    + "롤업은 180일 남으므로, 몇 주 지나 들어온 조사에서도 단말별 추세를 볼 수 있다.\n\n"
+                    + "시 단위로 내림한 값이라 from/to 의 분·초는 무시된다. 마지막 한 시간은 아직 채워지는 중이다.")
+    @GetMapping("/events/trend")
+    public List<Map<String, Object>> trend(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String host,
+            @RequestParam(required = false) String type,
+            @RequestParam long from,
+            @RequestParam long to) {
+        String tenantId = currentTenantId(authorization);
+        return reader.query(trendBuilder.hourlyTrend(tenantId, host, type, from, to));
     }
 
     private String currentTenantId(String authorization) {
