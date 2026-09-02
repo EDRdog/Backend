@@ -98,6 +98,8 @@ edrdog:
     password: ${CLICKHOUSE_PASSWORD:edrdog}   # 시크릿은 Infisical 주입, 기본값은 로컬 kind ClickHouse 와 일치
     table: edrdog.events                 # 조회 대상 테이블 (archiver 가 적재)
     alerts-table: edrdog.alerts          # 판정기록(불변) 조회 대상 테이블 (archiver 가 적재)
+    # 시간 단위 롤업. 원본이 TTL 7일로 사라진 뒤에도 추세는 여기 남는다(180일 보관, archiver 의 MV 가 적재).
+    rollup-table: edrdog.events_hourly
     # ClickHouse 로 나가는 HTTP 상한. 빼면 CH 가 느려질 때 톰캣 스레드가 무한정 잡혀 API 전체가 같이 멎는다.
     connect-timeout-ms: ${CLICKHOUSE_CONNECT_TIMEOUT_MS:2000}
     # 조회는 사용자가 화면 앞에서 기다리는 요청이라 짧게 잡는다(데모 store-timeout 8s 안쪽).
