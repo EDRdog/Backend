@@ -37,6 +37,7 @@ edrdog:
     password: ${CLICKHOUSE_PASSWORD:edrdog}   # 시크릿은 Infisical 주입, 기본값은 로컬 kind ClickHouse 와 일치
     table: edrdog.events              # events 적재 대상 테이블
     alerts-table: edrdog.alerts       # alerts 적재 대상 테이블
+    rollup-table: edrdog.events_hourly   # events 시간 단위 롤업 (MV 가 적재, 180일 보관)
     # ClickHouse 로 나가는 HTTP 상한. 빼면 CH 가 느려질 때 컨슈머 스레드가 무한정 잡혀 적재가 통째로 멈춘다.
     connect-timeout-ms: ${CLICKHOUSE_CONNECT_TIMEOUT_MS:2000}
     # 적재는 최대 500건(max-poll-records) 배치 INSERT 라 조회보다 길게 잡는다. Kafka max.poll.interval.ms(기본 5분) 안쪽이라 리밸런스는 안 난다.

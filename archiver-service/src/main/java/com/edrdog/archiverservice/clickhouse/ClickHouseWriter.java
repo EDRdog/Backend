@@ -22,13 +22,16 @@ public class ClickHouseWriter {
     private final ClickHouseHttp http;
     private final ObjectMapper mapper;
     private final String table;
+    private final String rollupTable;
 
     public ClickHouseWriter(
             ClickHouseHttp http,
             @Value("${edrdog.clickhouse.table}") String table,
+            @Value("${edrdog.clickhouse.rollup-table}") String rollupTable,
             ObjectMapper mapper) {
         this.http = http;
         this.table = table;
+        this.rollupTable = rollupTable;
         this.mapper = mapper;
     }
 
@@ -78,10 +81,45 @@ public class ClickHouseWriter {
         for (String column : ADDED_COLUMNS) {
             http.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + column);
         }
+        ensureRollup();
         String ddl = http.query("SHOW CREATE TABLE " + table);
         ensureTtl(ddl);
         warnIfNotPartitioned(ddl);
         log.info("ClickHouse 스키마 준비 완료: {}", table);
+    }
+
+    /**
+     * 시간 단위 롤업과 그걸 채우는 MV. events 테이블이 있어야 MV 가 붙으므로 순서를 여기 고정한다.
+     *
+     * <p>원본은 TTL 7일이라 그 뒤엔 단말별 추세를 물을 데이터가 없다. 롤업은 INSERT 시점에 쌓여
+     * 원본이 지워져도 남는다. 측정이 count 하나뿐이라 AggregatingMergeTree 가 아니라
+     * SummingMergeTree 로 둔다. 읽는 쪽이 -Merge 없이 sum(cnt) 로 끝난다.
+     */
+    private void ensureRollup() {
+        http.execute("""
+                CREATE TABLE IF NOT EXISTS %s (
+                    tenant_id String,
+                    host String,
+                    hour DateTime,
+                    type LowCardinality(String),
+                    cnt UInt64
+                ) ENGINE = SummingMergeTree
+                PARTITION BY toYYYYMM(hour)
+                ORDER BY (tenant_id, host, hour, type)
+                TTL hour + toIntervalDay(180)
+                """.formatted(rollupTable));
+
+        // ts 는 UInt64 밀리초다. 그대로 toStartOfHour 에 넣으면 1970년 언저리로 접힌다.
+        http.execute("""
+                CREATE MATERIALIZED VIEW IF NOT EXISTS %s_mv TO %s AS
+                SELECT tenant_id,
+                       host,
+                       toStartOfHour(fromUnixTimestamp64Milli(ts)) AS hour,
+                       type,
+                       count() AS cnt
+                FROM %s
+                GROUP BY tenant_id, host, hour, type
+                """.formatted(rollupTable, rollupTable, table));
     }
 
     // 매번 걸면 전 파트 재계산 mutation 이 돌아 없을 때만 건다.
