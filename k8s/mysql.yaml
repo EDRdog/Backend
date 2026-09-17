@@ -1,4 +1,4 @@
-# MySQL — 회원가입/로그인용 유저·조직 저장(edrdog), 에이전트 등록 정보 저장(edrdog_collector).
+# MySQL — 회원가입/로그인용 유저·조직 저장(edrdog), 에이전트 등록 정보 저장(edrdog_collector), 대응 명령 저장(edrdog_responder).
 #   TCP 3306 -> host localhost:3306 (HTTP 아님)
 #
 # 볼륨이 없으면 파드가 갈릴 때마다 가입한 계정이 전부 사라진다. 배포를 안 건드려도 노드 재부팅이나 OOM 한 번이면 로그인이 안 되는 상태가 된다.
@@ -85,7 +85,7 @@ spec:
       targetPort: 3306
       nodePort: 30306
 ---
-# edrdog_collector 스키마 생성 Job. MYSQL_DATABASE 는 하나만 만들 수 있고, 이미 데이터가 든 배포서버의
+# edrdog_collector·edrdog_responder 스키마 생성 Job. MYSQL_DATABASE 는 하나만 만들 수 있고, 이미 데이터가 든 배포서버의
 # PVC 에는 /docker-entrypoint-initdb.d 가 아예 실행되지 않는다(데이터 디렉터리가 비어 있을 때만 도는
 # mysql 이미지의 규칙이라 최초 배포 이후로는 영영 못 탄다). kafka-topic-init 과 같은 멱등 Job 으로
 # 만들어야 이미 떠 있는 배포에도, 새로 만드는 클러스터에도 똑같이 먹는다.
@@ -109,6 +109,8 @@ spec:
               mysql -h mysql.edrdog.svc.cluster.local -uroot -p"$MYSQL_ROOT_PASSWORD" -e "
                 CREATE DATABASE IF NOT EXISTS edrdog_collector;
                 GRANT ALL PRIVILEGES ON edrdog_collector.* TO 'edrdog'@'%';
+                CREATE DATABASE IF NOT EXISTS edrdog_responder;
+                GRANT ALL PRIVILEGES ON edrdog_responder.* TO 'edrdog'@'%';
                 FLUSH PRIVILEGES;"
           env:
             # 엔트리포인트가 MYSQL_USER 에게는 MYSQL_DATABASE(edrdog) 에만 권한을 줘서, 새 스키마를

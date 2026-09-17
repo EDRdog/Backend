@@ -2,28 +2,25 @@ package com.edrdog.responderservice.command;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 명령 큐의 수령·결과 대기·만료·동시성 검증. */
+/** DB 에 둔 명령의 수령·결과 보고·만료·인스턴스 간 공유 검증. */
+@DataJpaTest
 class CommandQueueTest {
 
-    private static final long TTL_MS = 300_000;
+    private static final long WINDOW_MS = 30_000;
 
     /** 만료를 결정적으로 검증하려고 시각을 손으로 옮기는 시계. */
-    private static final class MovableClock extends Clock {
+    static final class MovableClock extends Clock {
         private Instant now = Instant.parse("2026-07-30T00:00:00Z");
 
         void advance(Duration d) {
@@ -46,25 +43,34 @@ class CommandQueueTest {
         }
     }
 
+    @Autowired
+    private AgentCommandRepository repository;
+
     private final MovableClock clock = new MovableClock();
-    private final CommandQueue queue = new CommandQueue(TTL_MS, clock);
+
+    private CommandQueue queue() {
+        return new CommandQueue(repository, WINDOW_MS, clock);
+    }
 
     @Test
     @DisplayName("dispatch 한 명령이 그 호스트의 drainFor 로 나온다")
     void dispatchThenDrain() {
+        CommandQueue queue = queue();
         String id = queue.dispatch("lab-mac", "kill_process", "/tmp/evil.sh");
 
         List<Command> drained = queue.drainFor("lab-mac");
 
-        assertThat(drained).hasSize(1);
-        assertThat(drained.get(0).id()).isEqualTo(id);
-        assertThat(drained.get(0).type()).isEqualTo("kill_process");
-        assertThat(drained.get(0).target()).isEqualTo("/tmp/evil.sh");
+        assertThat(drained).singleElement().satisfies(c -> {
+            assertThat(c.id()).isEqualTo(id);
+            assertThat(c.type()).isEqualTo("kill_process");
+            assertThat(c.target()).isEqualTo("/tmp/evil.sh");
+        });
     }
 
     @Test
     @DisplayName("한 번 꺼낸 명령은 다시 나오지 않는다")
     void drainIsOnce() {
+        CommandQueue queue = queue();
         queue.dispatch("lab-mac", "kill_process", "curl");
 
         assertThat(queue.drainFor("lab-mac")).hasSize(1);
@@ -72,8 +78,20 @@ class CommandQueueTest {
     }
 
     @Test
+    @DisplayName("다른 인스턴스가 넣은 명령도 꺼낼 수 있고, 한쪽이 꺼내면 다른 쪽엔 안 나온다")
+    void sharedAcrossInstances() {
+        CommandQueue a = queue();
+        CommandQueue b = queue();
+        String id = a.dispatch("lab-mac", "kill_process", "curl");
+
+        assertThat(b.drainFor("lab-mac")).singleElement().extracting(Command::id).isEqualTo(id);
+        assertThat(a.drainFor("lab-mac")).isEmpty();
+    }
+
+    @Test
     @DisplayName("다른 호스트의 명령은 섞이지 않는다")
     void hostsAreIsolated() {
+        CommandQueue queue = queue();
         queue.dispatch("lab-mac", "kill_process", "curl");
         queue.dispatch("lab-win", "kill_process", "evil.exe");
 
@@ -86,117 +104,114 @@ class CommandQueueTest {
     @Test
     @DisplayName("명령이 없는 호스트는 빈 목록")
     void unknownHostIsEmpty() {
-        assertThat(queue.drainFor("없는-호스트")).isEmpty();
+        assertThat(queue().drainFor("없는-호스트")).isEmpty();
     }
 
     @Test
-    @DisplayName("complete 가 대기 중인 awaitResult 를 깨운다")
-    void completeWakesWaiter() throws Exception {
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        CountDownLatch waiting = new CountDownLatch(1);
-        ExecutorService pool = Executors.newSingleThreadExecutor();
-        try {
-            var future = pool.submit(() -> {
-                waiting.countDown();
-                return queue.awaitResult(id, Duration.ofSeconds(5));
-            });
-            assertThat(waiting.await(2, TimeUnit.SECONDS)).isTrue();
-
-            queue.complete(id, "KILLED", "pid 4242 종료");
-
-            assertThat(future.get(5, TimeUnit.SECONDS)).contains("KILLED");
-        } finally {
-            pool.shutdownNow();
-        }
-    }
-
-    @Test
-    @DisplayName("결과가 awaitResult 보다 먼저 도착해도 받는다 (하트비트가 빠른 경우)")
-    void completeBeforeAwait() {
+    @DisplayName("꺼내 간 명령에 결과를 보고하면 find 로 보인다")
+    void completeIsVisible() {
+        CommandQueue queue = queue();
         String id = queue.dispatch("lab-mac", "kill_process", "curl");
         queue.drainFor("lab-mac");
 
         queue.complete(id, "KILLED", "pid 4242 종료");
 
-        assertThat(queue.awaitResult(id, Duration.ofSeconds(5))).contains("KILLED");
+        assertThat(queue.find(id)).hasValueSatisfying(c -> {
+            assertThat(c.getStatus()).isEqualTo("KILLED");
+            assertThat(c.getMessage()).isEqualTo("pid 4242 종료");
+        });
     }
 
     @Test
-    @DisplayName("결과가 오지 않으면 시한 뒤 빈 값")
-    void awaitTimesOut() {
+    @DisplayName("모르는 상태 문자열은 FAILED 로 저장한다 (엔드포인트 값을 그대로 믿지 않는다)")
+    void unknownStatusStoredAsFailed() {
+        CommandQueue queue = queue();
+        String id = queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.drainFor("lab-mac");
+
+        queue.complete(id, "KILLED_MAYBE", "?");
+
+        assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo("FAILED"));
+    }
+
+    @Test
+    @DisplayName("긴 보고 메시지는 컬럼 길이로 잘라 저장한다 (결과가 유실되지 않는다)")
+    void longMessageTruncated() {
+        CommandQueue queue = queue();
+        String id = queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.drainFor("lab-mac");
+
+        queue.complete(id, "FAILED", "x".repeat(5000));
+
+        assertThat(queue.find(id)).hasValueSatisfying(c -> {
+            assertThat(c.getStatus()).isEqualTo("FAILED");
+            assertThat(c.getMessage()).hasSize(AgentCommand.MESSAGE_MAX);
+        });
+    }
+
+    @Test
+    @DisplayName("아직 꺼내 가지 않은 명령에 온 결과는 버린다")
+    void completeBeforeDeliveryIgnored() {
+        CommandQueue queue = queue();
         String id = queue.dispatch("lab-mac", "kill_process", "curl");
 
-        assertThat(queue.awaitResult(id, Duration.ofMillis(100))).isEmpty();
+        queue.complete(id, "KILLED", "위조");
+
+        assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo(CommandQueue.PENDING));
     }
 
     @Test
-    @DisplayName("모르는 명령 id 를 기다리면 바로 빈 값")
-    void awaitUnknownId() {
-        assertThat(queue.awaitResult("없는-id", Duration.ofSeconds(5))).isEmpty();
+    @DisplayName("이미 결과가 있는 명령에 다시 온 보고는 덮어쓰지 않는다")
+    void secondReportIgnored() {
+        CommandQueue queue = queue();
+        String id = queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.drainFor("lab-mac");
+        queue.complete(id, "KILLED", "첫 보고");
+
+        queue.complete(id, "FAILED", "두 번째");
+
+        assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo("KILLED"));
     }
 
     @Test
-    @DisplayName("TTL 을 넘긴 명령은 drainFor 에 나오지 않는다")
+    @DisplayName("모르는 명령 id 에 온 보고는 터지지 않는다")
+    void unknownIdIgnored() {
+        queue().complete("없는-id", "KILLED", "늦은 보고");
+
+        assertThat(queue().find("없는-id")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("전달 시한을 넘긴 명령은 drainFor 에 나오지 않는다")
     void expiredIsNotDrained() {
+        CommandQueue queue = queue();
         queue.dispatch("lab-mac", "kill_process", "curl");
 
-        clock.advance(Duration.ofMillis(TTL_MS + 1));
+        clock.advance(Duration.ofMillis(WINDOW_MS + 1));
 
         assertThat(queue.drainFor("lab-mac")).isEmpty();
     }
 
     @Test
-    @DisplayName("TTL 안이면 그대로 남는다")
+    @DisplayName("전달 시한 안이면 그대로 남는다")
     void notYetExpiredStays() {
+        CommandQueue queue = queue();
         queue.dispatch("lab-mac", "kill_process", "curl");
 
-        clock.advance(Duration.ofMillis(TTL_MS - 1));
+        clock.advance(Duration.ofMillis(WINDOW_MS - 1));
 
         assertThat(queue.drainFor("lab-mac")).hasSize(1);
     }
 
     @Test
-    @DisplayName("이미 시한을 넘긴 명령에 늦게 결과가 와도 터지지 않는다")
-    void lateCompleteIsIgnored() {
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        assertThat(queue.awaitResult(id, Duration.ofMillis(50))).isEmpty();
+    @DisplayName("주어진 시각 이후 그 호스트에 나간 명령이 있는지 안다 (인스턴스 공통 쿨다운)")
+    void dispatchedSince() {
+        CommandQueue queue = queue();
+        Instant before = clock.instant();
+        queue.dispatch("lab-mac", "kill_process", "curl");
 
-        queue.complete(id, "KILLED", "늦은 보고");
-
-        assertThat(queue.awaitResult(id, Duration.ofMillis(50))).isEmpty();
-    }
-
-    @Test
-    @DisplayName("dispatch 와 complete 가 다른 스레드에서 동시에 일어나도 결과가 뒤섞이지 않는다")
-    void concurrentDispatchAndComplete() throws Exception {
-        int commands = 50;
-        ExecutorService dispatchers = Executors.newFixedThreadPool(8);
-        ExecutorService agent = Executors.newSingleThreadExecutor();
-        AtomicInteger completed = new AtomicInteger();
-        // 에이전트 역할: 큐를 계속 비우면서 각 명령을 target 과 같은 상태 문자열로 보고한다.
-        // 대기 중인 요청이 자기 명령의 결과를 받았는지로 뒤섞임을 잡는다.
-        agent.submit(() -> {
-            while (completed.get() < commands) {
-                for (Command c : queue.drainFor("lab-mac")) {
-                    queue.complete(c.id(), "KILLED", c.target());
-                    completed.incrementAndGet();
-                }
-            }
-        });
-        try {
-            List<java.util.concurrent.Future<Optional<String>>> waits = new java.util.ArrayList<>();
-            for (int i = 0; i < commands; i++) {
-                waits.add(dispatchers.submit(() -> {
-                    String id = queue.dispatch("lab-mac", "kill_process", "curl");
-                    return queue.awaitResult(id, Duration.ofSeconds(10));
-                }));
-            }
-            for (var w : waits) {
-                assertThat(w.get(15, TimeUnit.SECONDS)).contains("KILLED");
-            }
-        } finally {
-            dispatchers.shutdownNow();
-            agent.shutdownNow();
-        }
+        assertThat(queue().dispatchedSince("lab-mac", before.minusMillis(1))).isTrue();
+        assertThat(queue().dispatchedSince("lab-win", before.minusMillis(1))).isFalse();
+        assertThat(queue().dispatchedSince("lab-mac", before.plusMillis(1))).isFalse();
     }
 }

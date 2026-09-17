@@ -6,6 +6,14 @@ spring:
       - classpath:observability.yml
       # 메트릭 익스포터 꺼짐: observability-metrics.yml 을 넣지 않는다.
       # micrometer-registry-otlp 가 없는 서비스라 트레이스만 보낸다(메트릭은 api/detector/archiver 에만).
+  datasource:                           # 명령 저장. 인스턴스 여러 대가 같은 명령을 본다
+    url: ${DB_URL:jdbc:mysql://localhost:3306/edrdog_responder}
+    username: ${DB_USER:edrdog}
+    password: ${DB_PASSWORD:edrdog}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
@@ -31,5 +39,4 @@ edrdog:
     execute:
       enabled: ${RESPONDER_EXECUTE_ENABLED:false}  # 실제 조치 실행 스위치 (기본 OFF = dry-run 유지)
     command:
-      timeout-ms: ${RESPONDER_COMMAND_TIMEOUT_MS:30000}  # 에이전트 결과를 기다리는 상한. 넘기면 TIMEOUT
-      ttl-ms: ${RESPONDER_COMMAND_TTL_MS:300000}         # 아무도 안 가져간 명령 만료 (호스트가 꺼져 있는 경우)
+      timeout-ms: ${RESPONDER_COMMAND_TIMEOUT_MS:30000}  # 결과 보고 시한이자 전달 시한. 넘기면 TIMEOUT 이고 더는 내려보내지 않는다

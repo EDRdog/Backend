@@ -231,20 +231,33 @@ X-Node-Key: ...
 | `NO_MATCH` | 그 이름/경로로 도는 프로세스가 없다 |
 | `FAILED` | 찾았지만 종료하지 못했다 |
 
-`TIMEOUT` / `COOLDOWN` / `DISABLED` 는 서버가 붙인다. 엔드포인트는 그 판단을 할 수 없다.
+`PENDING` / `TIMEOUT` / `COOLDOWN` / `DISABLED` 는 서버가 붙인다. 엔드포인트는 그 판단을 할 수 없다.
 
-## 대응이 동기로 보이는 이유
+## 대응 결과는 조회로 받는다
 
-대시보드에서 조치 버튼을 누르면 결과가 바로 나와야 한다. 그런데 에이전트는 방화벽 안쪽이라
-서버가 먼저 부를 수 없고, 하트비트를 기다려야 한다.
+에이전트는 방화벽 안쪽이라 서버가 먼저 부를 수 없고, 명령은 다음 하트비트에 실려 나간다.
+그래서 서버는 결과를 기다리지 않는다.
 
-그래서 서버가 대신 기다린다. `POST /api/responder/kill` 은 명령을 큐에 넣고 결과가 올 때까지
-블로킹한다. 하트비트 주기가 짧으면 사람이 느끼는 지연은 몇 초다. 기다리다 상한을 넘기면
-`TIMEOUT` 이다.
+```
+POST /api/alerts/{alertId}/respond                → 202 { status: PENDING, executionId }
+GET  /api/alerts/{alertId}/respond/{executionId}  → { status }   PENDING 이면 다시 조회
+```
 
-이 구조는 Fleet 을 쓸 때와 같다. Fleet 의 `scripts/run/sync` 도 fleetd 의 폴링을 서버가 대신
-기다려 주는 동기 API 였다. 그래서 이 채널을 바꿔도 `KillController` 부터 알림 `CONFIRMED` 전환까지
-그대로 둘 수 있다.
+api-service 는 이 둘을 responder 의 `POST /api/responder/kill`, `GET /api/responder/kill/{id}` 로
+위임한다. 결과가 `KILLED` 가 되는 조회에서 알림을 `CONFIRMED` 로 넘긴다.
+
+명령은 responder 의 MySQL(`edrdog_responder.agent_command`)에 저장한다.
+
+| 상태 | 언제 |
+|:---|:---|
+| `PENDING` | 저장됨. 아직 아무 하트비트도 가져가지 않음 |
+| `DELIVERED` | 하트비트가 가져감. 조건부 갱신이라 collector 가 여럿이어도 한 번만 내려간다 |
+| `KILLED` / `NO_MATCH` / `FAILED` | 에이전트가 보고함. `DELIVERED` 인 명령에만 한 번 기록된다 |
+
+조회 API 는 `PENDING` 과 `DELIVERED` 를 모두 `PENDING` 으로 보여주고, 시한(기본 30초)을 넘기면
+`TIMEOUT` 으로 보여준다. 같은 시한 안에 아무 하트비트도 가져가지 않은 명령은 그 뒤로 내려보내지 않는다.
+화면에 `TIMEOUT` 이 뜬 뒤 다시 누른 명령과 겹쳐 두 번 실행되지 않게 하기 위해서다. 시한 안에 가져간 명령의
+보고가 늦게 오면 이후 조회에서 결과로 바뀐다.
 
 ## 명령 종류
 

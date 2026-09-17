@@ -1,127 +1,94 @@
 package com.edrdog.responderservice.command;
 
+import com.edrdog.responderservice.response.KillOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 /**
- * 엔드포인트로 내려보낼 명령의 인메모리 큐.
+ * 엔드포인트로 내려보낼 명령 큐. 상태는 DB 에만 둔다.
  *
- * <p>에이전트가 방화벽 안쪽이라 서버가 먼저 부를 수 없어, 요청 스레드가 {@link #awaitResult} 에서
- * 에이전트의 다음 하트비트를 대신 기다린다. 영속 저장소는 두지 않는다.
+ * <p>에이전트가 방화벽 안쪽이라 서버가 먼저 부를 수 없고, 에이전트가 하트비트로 가져간다.
+ * 메모리에 두면 재시작에 명령이 사라지고, 인스턴스를 늘리면 넣은 곳과 꺼내는 곳이 어긋난다.
  */
 @Component
 public class CommandQueue {
 
     private static final Logger log = LoggerFactory.getLogger(CommandQueue.class);
 
-    /** 호스트별 미수령 명령. 에이전트가 하트비트로 가져간다. */
-    private final Map<String, Queue<Command>> pending = new ConcurrentHashMap<>();
-    /** 명령 id → 결과 대기 슬롯. complete 가 채우고 awaitResult 가 꺼낸다. */
-    private final Map<String, CompletableFuture<String>> results = new ConcurrentHashMap<>();
+    public static final String PENDING = "PENDING";
+    public static final String DELIVERED = "DELIVERED";
 
-    private final long ttlMs;
+    private final AgentCommandRepository repository;
+    /** 전달 시한. 결과 시한과 같은 값이라, 화면에 TIMEOUT 으로 보인 명령은 더는 내려가지 않는다. */
+    private final long deliveryWindowMs;
     private final Clock clock;
 
     @Autowired
-    public CommandQueue(@Value("${edrdog.responder.command.ttl-ms}") long ttlMs) {
-        this(ttlMs, Clock.systemUTC());
+    public CommandQueue(AgentCommandRepository repository,
+                        @Value("${edrdog.responder.command.timeout-ms}") long deliveryWindowMs) {
+        this(repository, deliveryWindowMs, Clock.systemUTC());
     }
 
     /** 만료 동작을 결정적으로 검증하려고 시계를 주입받는 생성자. */
-    public CommandQueue(long ttlMs, Clock clock) {
-        this.ttlMs = ttlMs;
+    public CommandQueue(AgentCommandRepository repository, long deliveryWindowMs, Clock clock) {
+        this.repository = repository;
+        this.deliveryWindowMs = deliveryWindowMs;
         this.clock = clock;
     }
 
-    /** 명령을 큐에 넣고 식별자를 돌려준다. 결과는 {@link #awaitResult} 로 기다린다. */
+    /** 명령을 저장하고 식별자를 돌려준다. */
     public String dispatch(String host, String type, String target) {
-        Instant now = clock.instant();
-        expire(now);
-        Command command = new Command(UUID.randomUUID().toString(), host, type, target, now);
-        results.put(command.id(), new CompletableFuture<>());
-        pending.computeIfAbsent(host, h -> new ConcurrentLinkedQueue<>()).add(command);
-        log.info("[COMMAND-DISPATCH] id={} host={} type={} target={}", command.id(), host, type, target);
-        return command.id();
+        String id = UUID.randomUUID().toString();
+        repository.save(new AgentCommand(id, host, type, target, PENDING, clock.instant()));
+        log.info("[COMMAND-DISPATCH] id={} host={} type={} target={}", id, host, type, target);
+        return id;
     }
 
     /**
-     * 결과가 올 때까지 블로킹한다. 시한을 넘기면 비어 있는 값. 슬롯은 기다리는 쪽이 치운다.
-     * 에이전트가 방화벽 안쪽이라 이 대기가 필요하다. 시한을 빼면 하트비트가 끊긴 호스트에 요청 스레드가 묶인다.
+     * 그 호스트의 대기 명령을 가져간 것으로 표시하고 돌려준다. 한 번 가져간 명령은 다시 주지 않는다.
+     * 전달 시한을 넘긴 명령은 주지 않는다. TIMEOUT 을 본 사용자가 다시 누른 명령과 겹쳐 두 번 죽이면 안 된다.
      */
-    public Optional<String> awaitResult(String id, Duration timeout) {
-        CompletableFuture<String> slot = results.get(id);
-        if (slot == null) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(slot.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
-        } catch (TimeoutException | ExecutionException e) {
-            return Optional.empty();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return Optional.empty();
-        } finally {
-            results.remove(id);
-        }
-    }
-
-    /** 그 호스트의 대기 명령을 모두 꺼낸다. 한 번 꺼낸 명령은 다시 주지 않는다. */
+    @Transactional
     public List<Command> drainFor(String host) {
-        Instant now = clock.instant();
-        expire(now);
-        Queue<Command> queue = pending.get(host);
-        if (queue == null) {
-            return List.of();
-        }
-        List<Command> drained = new ArrayList<>();
-        for (Command c = queue.poll(); c != null; c = queue.poll()) {
-            drained.add(c);
-        }
-        return drained;
+        Instant cutoff = clock.instant().minusMillis(deliveryWindowMs);
+        return repository.findByHostAndStatusAndCreatedAtAfterOrderByCreatedAt(host, PENDING, cutoff).stream()
+                // 다른 인스턴스가 먼저 가져간 행은 0 이 나와 빠진다.
+                .filter(c -> repository.transition(c.getId(), PENDING, DELIVERED, null) == 1)
+                .map(AgentCommand::toCommand)
+                .toList();
     }
 
-    /** 에이전트가 보고한 결과를 대기 중인 요청에 전달한다. */
+    /** 에이전트가 보고한 결과를 저장한다. 가져간(DELIVERED) 명령에만 한 번 기록된다. */
+    @Transactional
     public void complete(String id, String status, String message) {
-        // 슬롯은 여기서 지우지 않는다. 아직 대기에 못 들어간 요청이 결과를 놓친다.
-        CompletableFuture<String> slot = results.get(id);
-        if (slot == null) {
-            // 이미 시한을 넘겼거나 만료된 명령. 늦게 온 보고는 버린다.
-            log.info("[COMMAND-RESULT-LATE] id={} status={} (기다리는 요청 없음)", id, status);
+        // 보고 문자열을 그대로 믿으면 임의의 값이 알림 상태를 밀어 올린다. 모르는 값은 FAILED 다.
+        String outcome = KillOutcome.of(status).name();
+        // 에이전트 메시지는 길이 제한이 없다. 자르지 않으면 저장이 실패해 결과가 TIMEOUT 으로 굳는다.
+        String stored = message == null || message.length() <= AgentCommand.MESSAGE_MAX
+                ? message : message.substring(0, AgentCommand.MESSAGE_MAX);
+        if (repository.transition(id, DELIVERED, outcome, stored) == 0) {
+            log.info("[COMMAND-RESULT-IGNORED] id={} status={} (없는 명령이거나 이미 보고됨)", id, status);
             return;
         }
-        log.info("[COMMAND-RESULT] id={} status={} message={}", id, status, message);
-        slot.complete(status);
+        log.info("[COMMAND-RESULT] id={} status={} message={}", id, outcome, message);
     }
 
-    /** 아무도 가져가지 않은 명령을 TTL 기준으로 버린다. 오래 꺼진 호스트 때문에 큐가 무한히 자라지 않게 한다. */
-    private void expire(Instant now) {
-        Instant cutoff = now.minusMillis(ttlMs);
-        pending.values().forEach(queue -> queue.removeIf(c -> {
-            boolean stale = c.createdAt().isBefore(cutoff);
-            if (stale) {
-                results.remove(c.id());
-                log.info("[COMMAND-EXPIRED] id={} host={} target={}", c.id(), c.host(), c.target());
-            }
-            return stale;
-        }));
+    public Optional<AgentCommand> find(String id) {
+        return repository.findById(id);
+    }
+
+    /** since 이후 그 호스트에 나간 명령이 있는지. 인스턴스 공통 쿨다운에 쓴다. */
+    public boolean dispatchedSince(String host, Instant since) {
+        return repository.existsByHostAndCreatedAtAfter(host, since);
     }
 }

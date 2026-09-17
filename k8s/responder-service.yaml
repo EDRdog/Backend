@@ -27,11 +27,18 @@ spec:
                 name: edrdog-secrets
           env:
             # --- 실제 조치(kill) 실행 ---
-            # 끄려면 이 값을 "false" 로 바꾸거나 env 를 지운다(지우면 edrdog-secrets 값이 쓰인다). 조치는 명령 큐에 넣고 에이전트가 하트비트로 가져갈 때까지 서버가 기다리며, 외부 관리 서버에 의존하지 않으므로 API 토큰이나 truststore 가 필요 없다.
+            # 끄려면 이 값을 "false" 로 바꾸거나 env 를 지운다(지우면 edrdog-secrets 값이 쓰인다). 조치는 명령 저장소(MySQL)에 넣고 에이전트가 하트비트로 가져가며, 외부 관리 서버에 의존하지 않으므로 API 토큰이나 truststore 가 필요 없다.
             - name: RESPONDER_EXECUTE_ENABLED
               value: "true"
             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
               value: "kafka:9094"
+            # 명령 저장소. 인스턴스를 늘려도 같은 명령을 보고, 재시작해도 대기 명령이 남는다. 스키마는 mysql-schema-init Job 이 만든다.
+            - name: DB_URL
+              value: "jdbc:mysql://mysql:3306/edrdog_responder"
+            - name: DB_USER
+              value: "edrdog"
+            - name: DB_PASSWORD
+              value: "edrdog"
             # 앱의 OTLP 전송은 끈다. 관측은 전부 뉴렐릭 자바 에이전트가 맡는다.
             # cep.* 커스텀 지표는 graceMs 산정과 글쓰기용 실측 도구라 로컬에서만 쓴다(코드는 그대로 있다).
             - name: OTEL_ENABLED

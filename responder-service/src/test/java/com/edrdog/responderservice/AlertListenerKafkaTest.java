@@ -33,6 +33,7 @@ import static org.mockito.Mockito.verify;
         "spring.kafka.consumer.auto-offset-reset=earliest",
         "spring.kafka.listener.concurrency=1",
         "management.tracing.enabled=false",
+        "spring.datasource.url=jdbc:h2:mem:responder;DB_CLOSE_DELAY=-1",
 })
 @EmbeddedKafka(partitions = 1, topics = "alerts")
 class AlertListenerKafkaTest {

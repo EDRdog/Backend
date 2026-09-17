@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -402,18 +403,18 @@ class AlertApiIntegrationTest {
     // --- respond (kill 프록시) ---
 
     @Test
-    void 자기_alert_respond_는_알림host로_responder에_위임한다() throws Exception {
+    void 자기_alert_respond_는_알림host로_responder에_위임하고_202로_명령id를_준다() throws Exception {
         String[] a = signup("a-respond@edrdog.com");
         String id = seedAlert(a[1], "hostA", 100L);
         when(responder.kill(eq("hostA"), eq("evil.exe")))
-                .thenReturn(new KillResult("hostA", "evil.exe", "KILLED", "exec-1"));
+                .thenReturn(new KillResult("hostA", "evil.exe", "PENDING", "exec-1"));
 
         mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target\":\"evil.exe\"}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.host").value("hostA"))
-                .andExpect(jsonPath("$.status").value("KILLED"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.executionId").value("exec-1"));
 
         // host 는 알림에서 오고 클라이언트 입력이 아님을 확인
@@ -421,17 +422,34 @@ class AlertApiIntegrationTest {
     }
 
     @Test
-    void 조치가_성공하면_알림이_confirmed_로_넘어간다() throws Exception {
-        // 조치했는데 알림이 open 그대로면 목록에서 처리 여부를 알 수 없다.
-        String[] a = signup("a-respond-confirm@edrdog.com");
-        String id = seedAlert(a[1], "hostC", 300L);
-        when(responder.kill(eq("hostC"), eq("evil.exe")))
-                .thenReturn(new KillResult("hostC", "evil.exe", "KILLED", "exec-2"));
+    void respond_가_바로_끝나면_200이고_알림_상태를_바꾸지_않는다() throws Exception {
+        // 쿨다운·스위치 꺼짐은 명령이 나가지 않은 것이다.
+        String[] a = signup("a-respond-cool@edrdog.com");
+        String id = seedAlert(a[1], "hostE", 500L);
+        when(responder.kill(eq("hostE"), eq("evil.exe")))
+                .thenReturn(new KillResult("hostE", "evil.exe", "COOLDOWN", null));
 
         mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"target\":\"evil.exe\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COOLDOWN"));
+
+        mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
+                .andExpect(jsonPath("$.status").value("open"));
+    }
+
+    @Test
+    void 조치_결과가_KILLED_면_알림이_confirmed_로_넘어간다() throws Exception {
+        // 조치했는데 알림이 open 그대로면 목록에서 처리 여부를 알 수 없다.
+        String[] a = signup("a-respond-confirm@edrdog.com");
+        String id = seedAlert(a[1], "hostC", 300L);
+        when(responder.killResult("exec-2"))
+                .thenReturn(Optional.of(new KillResult("hostC", "evil.exe", "KILLED", "exec-2")));
+
+        mvc.perform(get("/api/alerts/" + id + "/respond/exec-2").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("KILLED"));
 
         mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
                 .andExpect(status().isOk())
@@ -439,21 +457,62 @@ class AlertApiIntegrationTest {
     }
 
     @Test
-    void 조치가_실패하면_알림_상태를_바꾸지_않는다() throws Exception {
+    void 조치_결과가_PENDING_이나_FAILED_면_알림_상태를_바꾸지_않는다() throws Exception {
         // 종료되지 않았는데 처리된 것처럼 보이면 안 된다.
         String[] a = signup("a-respond-fail@edrdog.com");
         String id = seedAlert(a[1], "hostD", 400L);
-        when(responder.kill(eq("hostD"), eq("evil.exe")))
-                .thenReturn(new KillResult("hostD", "evil.exe", "FAILED", null));
+        when(responder.killResult("exec-p"))
+                .thenReturn(Optional.of(new KillResult("hostD", "evil.exe", "PENDING", "exec-p")));
+        when(responder.killResult("exec-f"))
+                .thenReturn(Optional.of(new KillResult("hostD", "evil.exe", "FAILED", "exec-f")));
 
-        mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"target\":\"evil.exe\"}"))
-                .andExpect(status().isOk());
+        mvc.perform(get("/api/alerts/" + id + "/respond/exec-p").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"));
+        mvc.perform(get("/api/alerts/" + id + "/respond/exec-f").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FAILED"));
 
         mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("open"));
+    }
+
+    @Test
+    void 알림과_host_가_다른_명령_결과는_404() throws Exception {
+        // 명령 id 만 알면 다른 기기의 조치 결과를 보거나 알림을 confirmed 로 밀 수 있으면 안 된다.
+        String[] a = signup("a-respond-other@edrdog.com");
+        String id = seedAlert(a[1], "hostA", 100L);
+        when(responder.killResult("exec-x"))
+                .thenReturn(Optional.of(new KillResult("hostZ", "evil.exe", "KILLED", "exec-x")));
+
+        mvc.perform(get("/api/alerts/" + id + "/respond/exec-x").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
+                .andExpect(jsonPath("$.status").value("open"));
+    }
+
+    @Test
+    void 모르는_명령_결과는_404() throws Exception {
+        String[] a = signup("a-respond-unknown@edrdog.com");
+        String id = seedAlert(a[1], "hostA", 100L);
+        when(responder.killResult("없음")).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/alerts/" + id + "/respond/없음").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 남의_alert_로_명령_결과를_조회하면_404이고_responder를_호출하지_않는다() throws Exception {
+        String[] a = signup("a-presult@edrdog.com");
+        String[] b = signup("b-presult@edrdog.com");
+        String bId = seedAlert(b[1], "hostB", 200L);
+
+        mvc.perform(get("/api/alerts/" + bId + "/respond/exec-1").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isNotFound());
+
+        verify(responder, never()).killResult(any());
     }
 
     @Test
