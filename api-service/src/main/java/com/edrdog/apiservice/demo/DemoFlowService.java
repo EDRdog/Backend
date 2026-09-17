@@ -156,6 +156,7 @@ public class DemoFlowService {
                 "GET /api/alerts — 방금 만들어진 알림이 목록 맨 위에 있다",
                 "GET /api/alerts/" + alertId + "/lineage — 이 알림의 공격 경로 그래프",
                 "GET /api/alerts/summary — 대시보드 집계에 반영된 모습",
-                "POST /api/alerts/" + alertId + "/respond — responder 로 프로세스 종료 조치");
+                "POST /api/alerts/" + alertId + "/respond — responder 로 프로세스 종료 조치 (202, executionId)",
+                "GET /api/alerts/" + alertId + "/respond/{executionId} — 조치 결과 (PENDING 이면 다시 조회)");
     }
 }

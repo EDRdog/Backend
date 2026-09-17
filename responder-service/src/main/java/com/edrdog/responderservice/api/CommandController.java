@@ -34,7 +34,7 @@ public class CommandController {
         return commands.drainFor(host);
     }
 
-    /** 에이전트가 보고한 실행 결과. 대기 중인 kill 요청을 깨운다. */
+    /** 에이전트가 보고한 실행 결과. 저장해 두면 kill 결과 조회에 보인다. */
     @PostMapping("/result")
     public ResponseEntity<Void> result(@RequestBody CommandResult body) {
         if (body.commandId() == null || body.commandId().isBlank()) {
