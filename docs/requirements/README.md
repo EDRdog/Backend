@@ -28,4 +28,8 @@ ERD = Engineering Requirements Document (DB 관계도 아님). PRD(`docs/product
 ## 파일
 | 파일 | 기능 | 다루는 것 |
 |---|---|---|
+| `ingest.md` | 수집·등록 | 발행 계약, 검증·정규화, enroll/인증, 센서 설정 |
 | `detection.md` | 탐지 | 룰 판정, 알림 억제, 테넌트 격리, ClickHouse 적재 |
+| `alerting.md` | 알림 | 수신 대상 결정, 발송, 중복 억제, webhook 캐시 |
+| `response.md` | 대응 | 요청·응답, 상태 전이, 명령 큐, dry-run 권고 |
+| `query.md` | 조회·설정 | 조직 격리, 페이지네이션, 롤업 조회, 인증 |
