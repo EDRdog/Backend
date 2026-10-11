@@ -23,6 +23,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -87,7 +88,7 @@ class AgentIngestIntegrationTest {
 
     @Test
     void enroll_heartbeat_events_전체흐름_tenant_태깅_발행() throws Exception {
-        when(producer.publish(any(Event.class))).thenReturn(true);
+        when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
         when(responder.pendingCommands("mac-001"))
                 .thenReturn(List.of(new AgentCommand("cmd-1", "kill_process", "/tmp/evil.sh")));
         String nodeKey = enroll("mac-001", "darwin");
@@ -132,7 +133,7 @@ class AgentIngestIntegrationTest {
      */
     @Test
     void 에이전트가_보고한_전송_왕복시간을_집계한다() throws Exception {
-        when(producer.publish(any(Event.class))).thenReturn(true);
+        when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
         String nodeKey = enroll("mac-006", "darwin");
         Timer before = meters.find("agent.uplink.rtt").timer();
         long baseline = before == null ? 0 : before.count();
@@ -168,7 +169,7 @@ class AgentIngestIntegrationTest {
      */
     @Test
     void gzip_으로_압축된_요청을_풀어서_받는다() throws Exception {
-        when(producer.publish(any(Event.class))).thenReturn(true);
+        when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
         String nodeKey = enroll("mac-007", "darwin");
 
         String body = """
@@ -215,7 +216,7 @@ class AgentIngestIntegrationTest {
      */
     @Test
     void 압축_전후_바이트를_같은_요청에서_잰다() throws Exception {
-        when(producer.publish(any(Event.class))).thenReturn(true);
+        when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
         String nodeKey = enroll("mac-009", "darwin");
 
         String body = ("{\"events\":[{\"host\":\"mac-009\",\"type\":\"process\",\"ts\":1785341400000,"
@@ -239,7 +240,7 @@ class AgentIngestIntegrationTest {
     /** 검증에서 걸린 건은 발행하지 않고 accepted 에서도 빠진다(에이전트가 배치를 지워도 무방한 건수여야 한다). */
     @Test
     void 검증_실패_이벤트는_발행하지_않는다() throws Exception {
-        when(producer.publish(any(Event.class))).thenReturn(true);
+        when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
         String nodeKey = enroll("mac-002", "darwin");
 
         String body = """
@@ -259,6 +260,20 @@ class AgentIngestIntegrationTest {
                 .andExpect(jsonPath("$.accepted").value(1));
 
         verify(producer, times(1)).publish(any(Event.class));
+    }
+
+    /** 브로커 ack 를 못 받았는데 200 을 주면 에이전트가 배치를 지워 유실이 묻힌다. 2xx 가 아니면 에이전트가 다시 보낸다. */
+    @Test
+    void 브로커_ack_실패는_503_이다() throws Exception {
+        when(producer.publish(any(Event.class)))
+                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker down")));
+        String nodeKey = enroll("mac-010", "darwin");
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"events\":[{\"host\":\"mac-010\",\"type\":\"process\",\"ts\":1785341400000,\"process\":\"sh\"}]}"))
+                .andExpect(status().isServiceUnavailable());
     }
 
     @Test

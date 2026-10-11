@@ -29,6 +29,7 @@
 | AGT-11 | 압축 해제에 상한이 있어 큰 본문을 거부한다 | `GzipRequestFilter.MAX_DECOMPRESSED_BYTES` (8MB) 상수와 `AgentIngestIntegrationTest` | `docs/design-docs/decisions/013-compression-by-segment.md` | 자동 |
 | AGT-12 | 틀린 node_key 는 거부된다 | `AgentIngestIntegrationTest` 의 node_key 케이스 | `docs/design-docs/decisions/004-server-resolves-tenant-from-node-key.md` | 자동 |
 | AGT-13 | 같은 (tenant, host) 로 두 번 등록해도 행이 하나다 | DB 유니크 제약 + `AgentIngestIntegrationTest` | `docs/design-docs/failures/005-enroll-race-duplicate-rows.md` | 자동 |
+| AGT-16 | 브로커 ack 를 못 받으면 200 이 아니라 503 이다 | `AgentIngestIntegrationTest.브로커_ack_실패는_503_이다` | `docs/design-docs/decisions/018-collector-waits-for-broker-ack.md` | 자동 |
 
 ## 센서 설정
 
