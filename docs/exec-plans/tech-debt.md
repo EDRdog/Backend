@@ -9,7 +9,6 @@
 | Kafka 파드에 영속 볼륨이 없다 | `k8s/kafka.yaml` | 파드가 새로 뜨면 토픽과 `__consumer_offsets` 가 통째로 사라진다. 실제로 테이블 교체 때 offset 0 재소비로 이어졌다 | 2026-08-24 |
 | 브로커 1대, 복제 계수 1 | `k8s/kafka.yaml` | 컨슈머 장애는 견디지만 브로커 장애는 대비돼 있지 않다. 의도된 선택이지만 한계는 한계다 | 2026-08-24 |
 | 에이전트 송신 상한이 단말당 초당 100건 | `agent/internal/runtime/runtime.go` | 5초마다 `Drain(500)` 한 배치만 보낸다. 공격 피크(약 480건/초)면 버퍼 1만 건이 약 26초 뒤 넘쳐 오래된 것부터 버린다. 병목이 브로커가 아니라 에이전트다 | 2026-09-23 |
-| 서버 쪽 발행 실패가 재전송되지 않는다 | collector `EventsProducer.publish` | `template.send` 를 비동기로 던지고 200 을 준다. 에이전트는 응답의 accepted 를 안 본다 | 2026-09-23 |
 | 전송이 막히면 수집도 멈춘다 | `agent/internal/runtime/runtime.go` | flush 가 Run 루프에서 동기로 돈다(HTTP 타임아웃 5초 = FlushInterval). 막히면 채널(500)이 약 1분 안에 차고 센서가 멈춰 OS 단에서 유실된다 | 2026-09-23 |
 | S3 아카이빙이 기본 OFF | `archiver-service` `ARCHIVE_ENABLED` | 운영에서 꺼져 있어 TTL 7일이 지난 원본은 복구할 수 없다 | 2026-10-04 |
 
