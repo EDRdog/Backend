@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.Comparator;
 import java.util.List;
@@ -37,6 +39,9 @@ public class AgentService {
 
     /** 에이전트가 보고한 값의 상한. 이걸 넘으면 시계가 어긋났거나 값이 깨진 것이라 지표를 오염시킨다. */
     private static final long UPLINK_MAX_US = TimeUnit.MINUTES.toMicros(1);
+
+    /** 에이전트의 HTTP 타임아웃(5초)이다. 이보다 오래 기다려도 에이전트는 이미 실패로 보고 다시 보낸다. */
+    private static final long ACK_TIMEOUT_SECONDS = 5;
 
     public AgentService(TenantResolverClient tenants, AgentNodeRepository nodes, EventsProducer producer,
                         MeterRegistry metrics) {
@@ -131,23 +136,36 @@ public class AgentService {
         return node;
     }
 
-    /** 이벤트 배열에 서버가 푼 tenantId 를 심고 검증을 통과한 것만 events 로 발행한다. 반환값은 발행 건수다. */
+    /**
+     * 이벤트 배열에 서버가 푼 tenantId 를 심고 검증을 통과한 것만 events 로 발행한다. 반환값은 발행 건수다.
+     * 브로커 ack 를 전부 받아야 돌아온다. 하나라도 못 받으면 {@link PublishException}(503)이라 에이전트가 배치째 다시 보낸다.
+     */
     public int publish(AgentNode node, JsonNode events) {
         String tenantId = String.valueOf(node.getTenantId());
-        int accepted = 0;
+        List<CompletableFuture<?>> sent = new ArrayList<>();
         int dropped = 0;
         for (String raw : EventTagger.tag(tenantId, events, mapper)) {
             Optional<Event> event = RawEventMapper.map(raw, mapper);
-            if (event.isEmpty() || !producer.publish(event.get())) {
+            if (event.isEmpty()) {
                 dropped++;
                 continue;
             }
-            accepted++;
+            sent.add(producer.publish(event.get()));
         }
         if (dropped > 0) {
             // 이 로그가 없으면 에이전트가 스키마를 어긋나게 보내기 시작한 것을 알 방법이 없다.
-            log.warn("이벤트 {}건 버림 host={} accepted={}", dropped, node.getHostIdentifier(), accepted);
+            log.warn("이벤트 {}건 버림 host={} accepted={}", dropped, node.getHostIdentifier(), sent.size());
         }
-        return accepted;
+        // 전부 보낸 뒤 한 번에 기다린다. 앞서 성공한 건도 재전송되지만 중복 알림은 쿨다운이 억제한다(ADR 003).
+        try {
+            CompletableFuture.allOf(sent.toArray(CompletableFuture[]::new)).get(ACK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.error("events 발행 실패 host={} 건수={}", node.getHostIdentifier(), sent.size(), e);
+            throw new PublishException(e);
+        }
+        return sent.size();
     }
 }

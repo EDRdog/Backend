@@ -3,11 +3,11 @@ package com.edrdog.collectorservice.agent;
 import com.edrdog.schema.Event;
 import com.edrdog.schema.EventHeaders;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 검증을 통과한 이벤트를 events 로 발행한다(detector/archiver 입력).
@@ -20,8 +20,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class EventsProducer {
 
-    private static final Logger log = LoggerFactory.getLogger(EventsProducer.class);
-
     private final KafkaTemplate<String, byte[]> template;
     private final String eventsTopic;
 
@@ -31,18 +29,19 @@ public class EventsProducer {
         this.eventsTopic = eventsTopic;
     }
 
-    /** 1건 발행. 실패하면 false 를 돌려 응답 accepted 에서 빠지게 한다. */
-    public boolean publish(Event event) {
+    /**
+     * 1건 발행. ack 는 여기서 기다리지 않는다. 건마다 기다리면 linger 배치가 안 모여 압축도 깨진다.
+     * 요청 단위로 한 번에 기다리는 건 {@link AgentService#publish} 다. 동기 실패도 future 로 돌려 한 곳에서 처리한다.
+     */
+    public CompletableFuture<?> publish(Event event) {
         try {
             // 본문이 바이너리라 kafbat UI 로 못 읽는다. 헤더가 그 자리를 메우므로 ProducerRecord 로 직접 만든다.
             ProducerRecord<String, byte[]> record =
                     new ProducerRecord<>(eventsTopic, event.getHost(), event.toByteArray());
             EventHeaders.stamp(record.headers(), event);
-            template.send(record);
-            return true;
+            return template.send(record);
         } catch (Exception e) {
-            log.error("events 발행 실패: {}", event, e);
-            return false;
+            return CompletableFuture.failedFuture(e);
         }
     }
 }
