@@ -27,7 +27,8 @@
 |---|---|---|---|---|
 | AGT-9 | enroll → heartbeat → events 가 끝까지 흐른다 | `AgentIngestIntegrationTest` 전체 | `docs/agent-protocol.md` | 자동 |
 | AGT-10 | gzip 으로 압축된 요청 본문을 풀어서 받는다 | `AgentIngestIntegrationTest` 의 gzip 케이스 | `docs/design-docs/decisions/013-compression-by-segment.md` | 자동 |
-| AGT-11 | 압축 해제에 상한이 있어 큰 본문을 거부한다 | `GzipRequestFilter.MAX_DECOMPRESSED_BYTES` (8MB) 상수와 `AgentIngestIntegrationTest` | `docs/design-docs/decisions/013-compression-by-segment.md` | 자동 |
+| AGT-11 | 본문이 8MB 를 넘으면 압축 여부와 상관없이 413 이다. Content-Length 가 크면 읽기 전에, 청크 본문은 읽는 도중 끊는다 | `AgentIngestIntegrationTest.압축_안_한_본문이_상한을_넘으면_413_이고_발행하지_않는다`, `AgentIngestIntegrationTest.해제_크기_상한을_넘는_요청은_413_이고_발행하지_않는다`, `GzipRequestFilterTest.청크_본문이_상한을_넘으면_읽는_도중_413_이다`, `GzipRequestFilterTest.청크_본문이_상한_이하면_끝까지_읽힌다` | `docs/design-docs/decisions/021-cap-all-request-bodies-at-8mb.md` | 자동 |
+| AGT-18 | 깨진 gzip 본문은 500 이 아니라 400 이다 | `AgentIngestIntegrationTest.깨진_gzip_본문은_400_이다` | `docs/design-docs/decisions/021-cap-all-request-bodies-at-8mb.md` | 자동 |
 | AGT-12 | 틀린 node_key 는 거부된다 | `AgentIngestIntegrationTest` 의 node_key 케이스 | `docs/design-docs/decisions/004-server-resolves-tenant-from-node-key.md` | 자동 |
 | AGT-13 | 같은 (tenant, host) 로 두 번 등록해도 행이 하나다 | DB 유니크 제약 + `AgentIngestIntegrationTest` | `docs/design-docs/failures/005-enroll-race-duplicate-rows.md` | 자동 |
 | AGT-16 | 브로커 ack 를 못 받으면 200 이 아니라 503 이다 | `AgentIngestIntegrationTest.브로커_ack_실패는_503_이다` | `docs/design-docs/decisions/018-collector-waits-for-broker-ack.md` | 자동 |

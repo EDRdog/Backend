@@ -41,6 +41,12 @@
 |---|---|---|---|
 | detector 상태가 tenant 를 가리지 않는다 | `detector-service/.../kafkastreams/topology/` 상태 키와 `events` 파티션 키(둘 다 host) | 서로 다른 tenant 에 같은 host 이름의 기기가 있으면 상관 버퍼를 같이 쓴다. 한쪽 이벤트가 다른 쪽 판정의 근거가 되거나 판정을 가린다. 알림의 tenant·target 은 트리거 이벤트를 따르므로 kill 은 트리거 쪽 기기로만 간다. 키를 `tenant\|host` 로 바꾸면 파티션 배치가 달라져 미뤘다(`README.md` 의 파티션 키 절) | 2026-11-10 |
 
+## 입력 상한
+
+| 항목 | 위치 | 영향 | 발견일 |
+|---|---|---|---|
+| 이벤트 필드 하나의 길이와 detector 버퍼에 바이트 기준 상한이 없다 | `collector-service/.../agent/web/` 의 필드 검증, `detector-service/.../kafkastreams/topology/EventBuffer.java` | 요청 본문은 8MB 로 막혔지만(019) 8MB 짜리 필드 하나가 그대로 Kafka 와 detector 상관 버퍼에 들어간다. 버퍼 상한은 건수 기준이라 큰 이벤트가 쌓이면 힙을 쓴다 | 2026-11-10 |
+
 ## 측정값 전제
 
 ClickHouse 파티션(#180)과 롤업(#298) 수치는 **로컬 docker 단일 인스턴스 + 합성 데이터**다. 운영 실측이 아니다. 문서나 이력서에 쓰려면 이 전제를 같이 말해야 한다. 운영 수치가 필요하면 같은 질의를 운영에서 다시 돌려야 한다.

@@ -15,14 +15,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.BufferedReader;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
 
 /**
- * Content-Encoding: gzip 인 요청 본문을 푼다.
+ * Content-Encoding: gzip 인 요청 본문을 풀고, 압축 여부와 상관없이 본문 크기에 상한을 건다.
  *
  * <p>Tomcat 은 요청 본문을 자동으로 풀지 않고 {@code server.compression} 은 응답 전용이다.
  * 이게 없으면 압축해서 보내는 에이전트가 400 을 맞는다.
@@ -35,7 +37,7 @@ import java.util.zip.GZIPInputStream;
 public class GzipRequestFilter extends OncePerRequestFilter {
 
     /**
-     * 해제 크기 상한. 정상 배치는 500건(에이전트 batch_size 기본값)이라 1MB 언저리이고 그 8배다.
+     * 본문 크기 상한(gzip 이면 푼 뒤 기준). 정상 배치는 500건(에이전트 batch_size 기본값)이라 1MB 언저리이고 그 8배다.
      * 상한 없이 열면 몇 KB 짜리 요청이 수 GB 로 풀려, 인증된 에이전트 하나로 collector 를 죽일 수 있다.
      */
     static final long MAX_DECOMPRESSED_BYTES = 8L * 1024 * 1024;
@@ -52,14 +54,25 @@ public class GzipRequestFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
             throws ServletException, IOException {
         long wire = Math.max(req.getContentLengthLong(), 0);
-        if (!"gzip".equalsIgnoreCase(req.getHeader(HttpHeaders.CONTENT_ENCODING))) {
-            chain.doFilter(req, res);
-            record(req, wire, wire);   // 압축 전 기준선. 구버전 에이전트 트래픽이 그대로 비교 대상이 된다
+        // 압축 안 한 본문도 같은 상한. 길이를 미리 알면 읽기 전에 끊는다.
+        if (wire > MAX_DECOMPRESSED_BYTES) {
+            res.sendError(HttpStatus.PAYLOAD_TOO_LARGE.value(), "body_too_large");
             return;
         }
-        GzipRequestWrapper wrapped = new GzipRequestWrapper(req);
+        boolean gzip = "gzip".equalsIgnoreCase(req.getHeader(HttpHeaders.CONTENT_ENCODING));
+        InputStream in = req.getInputStream();
+        if (gzip) {
+            try {
+                in = new GZIPInputStream(in);
+            } catch (ZipException | EOFException e) {   // 헤더부터 깨진 본문은 클라이언트 잘못이다
+                res.sendError(HttpStatus.BAD_REQUEST.value(), "invalid_gzip_body");
+                return;
+            }
+        }
+        LimitedRequestWrapper wrapped = new LimitedRequestWrapper(req, in);
         chain.doFilter(wrapped, res);
-        record(req, wire, wrapped.decompressedBytes());
+        // 비압축이면 wire == raw 라 압축 전 기준선이 된다. 구버전 에이전트 트래픽이 그대로 비교 대상이 된다
+        record(req, wire, gzip ? wrapped.bytesRead() : wire);
     }
 
     /**
@@ -72,15 +85,15 @@ public class GzipRequestFilter extends OncePerRequestFilter {
         }
     }
 
-    /** 본문만 푼 요청. 나머지는 원본에 그대로 위임한다. */
-    private static final class GzipRequestWrapper extends HttpServletRequestWrapper {
+    /** 본문을 상한 걸린 스트림으로 바꾼 요청. 나머지는 원본에 그대로 위임한다. */
+    private static final class LimitedRequestWrapper extends HttpServletRequestWrapper {
 
-        private final LimitedGzipStream body;
+        private final LimitedStream body;
         private BufferedReader reader;
 
-        GzipRequestWrapper(HttpServletRequest req) throws IOException {
+        LimitedRequestWrapper(HttpServletRequest req, InputStream in) {
             super(req);
-            this.body = new LimitedGzipStream(req.getInputStream());
+            this.body = new LimitedStream(in);
         }
 
         @Override
@@ -97,7 +110,7 @@ public class GzipRequestFilter extends OncePerRequestFilter {
             return reader;
         }
 
-        // Content-Length 는 압축된 바이트라 풀린 본문 길이와 다르다. 그대로 두면 읽다가 잘린다.
+        // gzip 이면 Content-Length 는 압축된 바이트라 풀린 본문 길이와 다르다. 그대로 두면 읽다가 잘린다.
         @Override
         public int getContentLength() {
             return -1;
@@ -108,20 +121,20 @@ public class GzipRequestFilter extends OncePerRequestFilter {
             return -1;
         }
 
-        long decompressedBytes() {
-            return body.decompressedBytes();
+        long bytesRead() {
+            return body.bytesRead();
         }
     }
 
-    /** 풀린 바이트를 세면서 상한을 넘으면 끊는다. 다 풀고 나서 재면 이미 메모리를 쓴 뒤다. */
-    private static final class LimitedGzipStream extends ServletInputStream {
+    /** 읽은(gzip 이면 풀린) 바이트를 세면서 상한을 넘으면 끊는다. 다 읽고 나서 재면 이미 메모리를 쓴 뒤다. */
+    private static final class LimitedStream extends ServletInputStream {
 
         private final InputStream in;
         private long read;
         private boolean finished;
 
-        LimitedGzipStream(InputStream compressed) throws IOException {
-            this.in = new GZIPInputStream(compressed);
+        LimitedStream(InputStream in) {
+            this.in = in;
         }
 
         @Override
@@ -149,11 +162,11 @@ public class GzipRequestFilter extends OncePerRequestFilter {
         private void count(int n) {
             read += n;
             if (read > MAX_DECOMPRESSED_BYTES) {
-                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "decompressed_body_too_large");
+                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "body_too_large");
             }
         }
 
-        long decompressedBytes() {
+        long bytesRead() {
             return read;
         }
 
