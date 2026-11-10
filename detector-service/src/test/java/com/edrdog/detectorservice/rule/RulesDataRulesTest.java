@@ -125,6 +125,20 @@ class RulesDataRulesTest {
     }
 
     @Test
+    @DisplayName("판정 중 예외를 던지는 룰이 있어도 나머지 룰과 스트림 스레드는 영향이 없다")
+    void throwingRule_isSkipped() {
+        SigmaRule broken = new SigmaRule("BROKEN", "T1059", Alert.SEV_HIGH, java.util.Set.of(EventTypes.PROCESS),
+                e -> {
+                    throw new IllegalStateException("boom");
+                });
+        Event e = proc("tool.exe", "explorer.exe", "tool.exe dumpit", 1000);
+
+        Alert a = eval(List.of(), e, broken, procRule("dump_tool", "medium", "dumpit")).orElseThrow();
+
+        assertThat(a.ruleId()).isEqualTo("DUMP_TOOL");
+    }
+
+    @Test
     @DisplayName("host 가 없으면 데이터 룰도 판정하지 않는다")
     void noHost_noAlert() {
         Event e = TestEvents.of("", EventTypes.PROCESS, 1000, "tool.exe", "x", "tool.exe dumpit", null, 0, null, null, null, "t");

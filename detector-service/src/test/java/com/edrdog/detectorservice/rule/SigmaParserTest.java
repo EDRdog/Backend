@@ -7,6 +7,8 @@ import com.edrdog.schema.EventTypes;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -332,6 +334,44 @@ class SigmaParserTest {
         assertRejected("name: t\ntags: [attack.t1059]\n" + body, "level");
         assertRejected("name: t\nlevel: urgent\ntags: [attack.t1059]\n" + body, "level");
         assertRejected("name: t\nlevel: medium\ntags: [attack.execution]\n" + body, "MITRE");
+    }
+
+    @Test
+    @DisplayName("contains, startswith, endswith 에 빈 값을 주면 거절한다 (전부 맞아 버린다)")
+    void emptyValueForSubstringModifier_isRejected() {
+        assertRejected(withDetection("selection:\n  CommandLine|contains: ''\ncondition: selection"), "빈 값");
+        assertRejected(withDetection("selection:\n  CommandLine|startswith: ''\ncondition: selection"), "빈 값");
+        assertRejected(withDetection("selection:\n  CommandLine|endswith:\n    - 'abc'\n    - ''\ncondition: selection"), "빈 값");
+        assertRejected(withDetection("selection:\n  Image|endswith: '\\'\ncondition: selection"), "빈 값");
+    }
+
+    @Test
+    @DisplayName("같은 키가 두 번 나오면 거절한다 (뒤의 것이 앞의 것을 조용히 덮는다)")
+    void duplicateKeys_areRejected() {
+        assertThatThrownBy(() -> process("selection:\n  CommandLine|contains: 'aaa'\n  CommandLine|contains: 'bbb'\ncondition: selection"))
+                .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    @DisplayName("일치 modifier 를 둘 이상 쓰면 거절한다")
+    void multipleMatchModifiers_areRejected() {
+        assertRejected(withDetection("selection:\n  CommandLine|contains|startswith: 'x'\ncondition: selection"), "하나만");
+    }
+
+    @Test
+    @DisplayName("기본 로케일이 터키어여도 대소문자 비교와 ruleId 가 같다")
+    void caseHandling_ignoresDefaultLocale() {
+        Locale saved = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            SigmaRule r = process("selection:\n  CommandLine|contains: 'ID'\ncondition: selection");
+
+            assertThat(r.matches(proc("a", "b", "x id y"))).isTrue();
+            assertThat(r.matches(proc("a", "b", "X ID Y"))).isTrue();
+            assertThat(r.ruleId()).isEqualTo("TEST_RULE");
+        } finally {
+            Locale.setDefault(saved);
+        }
     }
 
     @Test

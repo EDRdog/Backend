@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -63,7 +64,10 @@ public final class SigmaParser {
     private static final Pattern MITRE_TAG = Pattern.compile("attack\\.(t\\d{4}(?:\\.\\d{3})?)");
 
     public static SigmaRule parse(String yaml) {
-        Map<?, ?> doc = map(new Yaml(new SafeConstructor(new LoaderOptions())).load(yaml), "룰 파일 최상위");
+        // 같은 키가 두 번 나오면 뒤의 것이 앞의 것을 조용히 덮어 룰이 의도와 다르게 걸린다. 파싱 단계에서 거절한다.
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
+        Map<?, ?> doc = map(new Yaml(new SafeConstructor(options)).load(yaml), "룰 파일 최상위");
 
         String name = string(doc, "name");
         if (!NAME.matcher(name).matches()) {
@@ -84,7 +88,7 @@ public final class SigmaParser {
         }
         Predicate<Event> match = new ConditionParser(string(detection, "condition"), selections).parse();
 
-        return new SigmaRule(name.toUpperCase(), mitre(doc), severity(string(doc, "level"), category), c.types(), match);
+        return new SigmaRule(name.toUpperCase(Locale.ROOT), mitre(doc), severity(string(doc, "level"), category), c.types(), match);
     }
 
     /** tags 의 첫 attack.tNNNN 이 알림의 MITRE 가 된다. 없으면 알림에 기법을 못 싣는다. */
@@ -148,7 +152,11 @@ public final class SigmaParser {
             }
         }
         boolean all = modifiers.contains("all");
-        String match = modifiers.stream().filter(MATCH_MODIFIERS::contains).findFirst().orElse("equals");
+        List<String> matches = modifiers.stream().filter(MATCH_MODIFIERS::contains).toList();
+        if (matches.size() > 1) {
+            throw new IllegalArgumentException("일치 modifier 는 하나만 쓴다: " + key);
+        }
+        String match = matches.isEmpty() ? "equals" : matches.get(0);
         boolean basename = BASENAME_FIELDS.contains(fieldName);
 
         List<?> values = value instanceof List<?> list ? list : Arrays.asList(value);
@@ -160,7 +168,7 @@ public final class SigmaParser {
             tests.add(text(match, v, basename));
         }
         return e -> {
-            String actual = getter.apply(e).toLowerCase();
+            String actual = getter.apply(e).toLowerCase(Locale.ROOT);
             return all ? tests.stream().allMatch(t -> t.test(actual)) : tests.stream().anyMatch(t -> t.test(actual));
         };
     }
@@ -169,7 +177,11 @@ public final class SigmaParser {
         if (!(v instanceof String || v instanceof Number)) {
             throw new IllegalArgumentException("값은 문자열이나 숫자여야 한다: " + v);
         }
-        String s = v.toString().toLowerCase();
+        String s = v.toString().toLowerCase(Locale.ROOT);
+        // 빈 값의 contains/startswith/endswith 는 모든 이벤트에 맞는다. 룰을 쓰다 흘린 값이 전부 걸리는 룰이 된다.
+        if (s.isEmpty() && !match.equals("equals")) {
+            throw new IllegalArgumentException("빈 값은 " + match + " 에 쓸 수 없다 (전부 맞는다)");
+        }
         if (s.contains("*") || s.contains("?")) {
             throw new IllegalArgumentException("와일드카드(* ?)는 지원하지 않는다. contains/startswith/endswith 로 쓴다: " + v);
         }
@@ -180,6 +192,9 @@ public final class SigmaParser {
                 throw new IllegalArgumentException("에이전트는 Image 경로를 보내지 않아 경로 조각 검색은 못 한다: " + v);
             }
             String name = s.substring(sep + 1);
+            if (name.isEmpty()) {
+                throw new IllegalArgumentException("빈 값: 경로 구분자 뒤에 파일명이 없다: " + v);
+            }
             return name::equals;
         }
         return switch (match) {

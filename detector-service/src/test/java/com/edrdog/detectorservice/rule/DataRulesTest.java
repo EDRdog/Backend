@@ -1,5 +1,9 @@
 package com.edrdog.detectorservice.rule;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -8,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -125,6 +130,63 @@ class DataRulesTest {
         rules.reload();
 
         assertThat(ids(rules)).containsExactly("RULE_A", "RULE_B");
+    }
+
+    @Test
+    @DisplayName("리로드 때 파일이 전부 깨졌고 이전 룰과 이름이 겹치지 않아도 룰이 비지 않는다")
+    void reload_allFilesBroken_keepsPrevious() throws IOException {
+        DataRules rules = new DataRules(dir.toString());
+
+        Files.delete(dir.resolve("a.yml"));
+        Files.delete(dir.resolve("b.yml"));
+        write("x.yml", "name: [unclosed");
+        rules.reload();
+
+        assertThat(ids(rules)).containsExactly("RULE_A", "RULE_B");
+    }
+
+    @Test
+    @DisplayName("시작할 때 외부 파일이 전부 깨졌으면 번들 룰로 시작한다")
+    void start_allExternalFilesBroken_usesBundled() throws IOException {
+        Files.delete(dir.resolve("a.yml"));
+        Files.delete(dir.resolve("b.yml"));
+        write("x.yml", "name: [unclosed");
+
+        DataRules rules = new DataRules(dir.toString());
+
+        assertThat(rules.current()).isNotEmpty();
+        assertThat(ids(rules)).doesNotContain("RULE_A");
+    }
+
+    @Test
+    @DisplayName("같은 문제는 상태가 바뀔 때 한 번만 에러로 남긴다 (없는 ConfigMap 이 30초마다 에러를 쌓지 않는다)")
+    void sameProblem_isLoggedOncePerStateChange() throws IOException {
+        Logger logger = (Logger) LoggerFactory.getLogger(DataRules.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            DataRules rules = new DataRules(dir.toString());
+            Files.delete(dir.resolve("a.yml"));
+            Files.delete(dir.resolve("b.yml"));
+
+            rules.reload();
+            rules.reload();
+            rules.reload();
+            assertThat(errors(appender)).as("계속 비어 있는 동안").isEqualTo(1);
+
+            write("a.yml", ruleYaml("rule_a", "aaa"));
+            rules.reload();
+            Files.delete(dir.resolve("a.yml"));
+            rules.reload();
+            assertThat(errors(appender)).as("복구됐다가 다시 비면 다시 한 번").isEqualTo(2);
+        } finally {
+            logger.detachAppender(appender);
+        }
+    }
+
+    private static long errors(ListAppender<ILoggingEvent> appender) {
+        return appender.list.stream().filter(e -> e.getLevel() == Level.ERROR).count();
     }
 
     @Test
