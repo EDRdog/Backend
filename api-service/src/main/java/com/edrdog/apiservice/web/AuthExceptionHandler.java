@@ -24,7 +24,12 @@ public class AuthExceptionHandler {
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
             case DUPLICATE -> HttpStatus.CONFLICT;
             case UPSTREAM_ERROR -> HttpStatus.BAD_GATEWAY;
+            case PASSWORD_CHANGE_REQUIRED -> HttpStatus.FORBIDDEN;
         };
+        // 일반 403(권한 없음)과 구분되게 코드를 싣는다. 프론트가 이 코드를 보고 패스워드 변경 화면으로 보낸다.
+        if (e.getKind() == AuthException.Kind.PASSWORD_CHANGE_REQUIRED) {
+            return ResponseEntity.status(status).body(Map.of("error", e.getMessage(), "code", "password_change_required"));
+        }
         return ResponseEntity.status(status).body(Map.of("error", e.getMessage()));
     }
 }

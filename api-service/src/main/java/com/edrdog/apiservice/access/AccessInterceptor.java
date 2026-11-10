@@ -46,7 +46,10 @@ public class AccessInterceptor implements HandlerInterceptor {
         if (required == null) {
             return true;   // 인증 없는 경로. 의도한 것만 열려 있는지는 UrlAccessTest 가 본다.
         }
-        Principal who = auth.resolve(bearerToken(request.getHeader("Authorization")));
+        // 패스워드 변경이 필요한 계정은 allowPasswordChange 가 켜진 핸들러 말고는 여기서 403(password_change_required)이다.
+        // 유휴·중복 종료와 만료도 resolve 안에서 걸리므로 이 관문을 지나는 모든 경로에 같이 적용된다.
+        String token = bearerToken(request.getHeader("Authorization"));
+        Principal who = required.allowPasswordChange() ? auth.resolveAllowingPasswordChange(token) : auth.resolve(token);
         String what = request.getMethod() + " " + request.getRequestURI();
         String ip = request.getRemoteAddr();
 

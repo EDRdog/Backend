@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
@@ -124,7 +125,14 @@ class RoleAccessIntegrationTest extends AccessTestBase {
         JsonNode n = om.readTree(login.getResponse().getContentAsString());
         assertEquals("viewer", n.get("role").asText());
         assertEquals(org.tenantId(), n.get("tenantId").asLong());
-        mvc.perform(get("/api/audit").with(as(n.get("token").asText()))).andExpect(status().isForbidden());
+        // admin 이 만든 계정은 첫 로그인에서 패스워드를 바꿔야 한다(ADR 031). 바꾼 뒤에야 역할 판정이 난다.
+        assertTrue(n.get("mustChangePassword").asBoolean());
+        String viewerToken = n.get("token").asText();
+        mvc.perform(post("/api/auth/password").with(as(viewerToken)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"" + PASSWORD + "\",\"newPassword\":\"N3w#Valid-Pw\"}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/audit").with(as(viewerToken))).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").doesNotExist());
 
         JsonNode rows = audits(org, "?type=account_create");
         assertEquals(1, rows.size());

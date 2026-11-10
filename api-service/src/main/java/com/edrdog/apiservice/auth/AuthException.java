@@ -10,7 +10,8 @@ public class AuthException extends RuntimeException {
         UNAUTHORIZED,   // 401
         NOT_FOUND,      // 404
         DUPLICATE,      // 409
-        UPSTREAM_ERROR  // 502 (외부 연동 실패, 예: Slack webhook 테스트 발송)
+        UPSTREAM_ERROR, // 502 (외부 연동 실패, 예: Slack webhook 테스트 발송)
+        PASSWORD_CHANGE_REQUIRED  // 403 + code (기본 패스워드를 바꾸기 전에는 변경·로그아웃·내 정보만 된다)
     }
 
     private final Kind kind;
@@ -42,5 +43,9 @@ public class AuthException extends RuntimeException {
 
     public static AuthException upstreamError(String message) {
         return new AuthException(Kind.UPSTREAM_ERROR, message);
+    }
+
+    public static AuthException passwordChangeRequired(String message) {
+        return new AuthException(Kind.PASSWORD_CHANGE_REQUIRED, message);
     }
 }

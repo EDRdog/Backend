@@ -40,7 +40,7 @@ class AuthIntegrationTest {
     void 회원가입_내정보_로그아웃_전체흐름() throws Exception {
         MvcResult signup = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json("flow@edrdog.com", "password1")))
+                        .content(json("flow@edrdog.com", "Tr1cky#Pwd")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andExpect(jsonPath("$.email").value("flow@edrdog.com"))
@@ -69,7 +69,7 @@ class AuthIntegrationTest {
     @Test
     void 잘못된_비밀번호_로그인은_401() throws Exception {
         mvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json("login@edrdog.com", "password1")))
+                        .content(json("login@edrdog.com", "Tr1cky#Pwd")))
                 .andExpect(status().isCreated());
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(json("login@edrdog.com", "wrongpass1")))
@@ -78,7 +78,7 @@ class AuthIntegrationTest {
 
     @Test
     void 중복_이메일_회원가입은_409() throws Exception {
-        String body = json("dup@edrdog.com", "password1");
+        String body = json("dup@edrdog.com", "Tr1cky#Pwd");
         mvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
         mvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON).content(body))

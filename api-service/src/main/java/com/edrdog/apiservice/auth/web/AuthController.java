@@ -88,7 +88,7 @@ public class AuthController {
         // 지우기 전에 누구 세션인지 읽어 둔다. 이미 무효한 토큰이면 남길 행위자가 없어 기록하지 않는다.
         Principal who = null;
         try {
-            who = auth.resolve(token);
+            who = auth.resolveAllowingPasswordChange(token);
         } catch (AuthException ignored) {
             // 멱등 로그아웃: 무효 토큰도 204
         }
@@ -100,11 +100,11 @@ public class AuthController {
     }
 
     @Operation(summary = "내 정보", description = "Bearer 토큰으로 현재 유저 정보를 조회한다.")
-    @RequiresRole(Role.VIEWER)
+    @RequiresRole(value = Role.VIEWER, allowPasswordChange = true)
     @GetMapping("/me")
     public MeResponse me(@RequestHeader(name = "Authorization", required = false) String authorization) {
-        Principal p = auth.resolve(bearerToken(authorization));
-        return new MeResponse(p.userId(), p.tenantId(), p.email(), p.role());
+        Principal p = auth.resolveAllowingPasswordChange(bearerToken(authorization));
+        return new MeResponse(p.userId(), p.tenantId(), p.email(), p.role(), auth.mustChangePassword(p.userId()));
     }
 
     /**

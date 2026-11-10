@@ -93,7 +93,7 @@ class HostApiIntegrationTest {
     private String[] signup(String email) throws Exception {
         MvcResult res = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         var node = om.readTree(res.getResponse().getContentAsString());

@@ -28,14 +28,17 @@ public class UserAccountService {
         if (!AuthValidation.validEmail(email)) {
             throw AuthException.invalidInput("이메일 형식이 올바르지 않습니다");
         }
-        if (!AuthValidation.validPassword(password)) {
-            throw AuthException.invalidInput("비밀번호가 규칙에 맞지 않습니다");
+        String weak = AuthValidation.passwordError(password, email);
+        if (weak != null) {
+            throw AuthException.invalidInput(weak);
         }
         if (users.existsByEmail(email)) {
             throw AuthException.duplicate("이미 사용 중인 이메일입니다");
         }
         try {
-            return users.save(AppUser.of(email, encoder.encode(password), tenantId, Role.VIEWER.value(), Instant.now()));
+            AppUser viewer = AppUser.of(email, encoder.encode(password), tenantId, Role.VIEWER.value(), Instant.now());
+            viewer.requirePasswordChange();   // 패스워드를 만든 admin 이 알고 있으니 첫 로그인에서 본인이 바꾸게 한다(BF-08, ADR 031)
+            return users.save(viewer);
         } catch (DataIntegrityViolationException e) {
             // existsByEmail 통과 후 동시 요청이 unique 제약을 밟은 경우
             throw AuthException.duplicate("이미 사용 중인 이메일입니다");
