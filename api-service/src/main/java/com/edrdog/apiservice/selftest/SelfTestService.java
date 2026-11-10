@@ -4,7 +4,7 @@ import com.edrdog.apiservice.audit.AuditEntry;
 import com.edrdog.apiservice.audit.AuditResult;
 import com.edrdog.apiservice.audit.AuditService;
 import com.edrdog.apiservice.audit.AuditType;
-
+import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.notify.SlackWebhookClient;
 import com.edrdog.apiservice.operations.DependencyResult;
 import org.slf4j.Logger;
@@ -53,7 +53,8 @@ public class SelfTestService {
         this.audit = audit;
     }
 
-    public SelfTestRun run(SelfTestRun.Trigger trigger, String requestedBy) {
+    /** requester 는 관리자가 요청했을 때만 있다(기동과 주기 실행은 null). */
+    public SelfTestRun run(SelfTestRun.Trigger trigger, Principal requester) {
         Instant startedAt = Instant.now();
         List<SelfTestItem> items = new ArrayList<>(checks.run());
         items.addAll(integrity.verify());
@@ -61,7 +62,8 @@ public class SelfTestService {
         // 저장 전에 직전 결과를 읽어 둬야 "새로 실패했는지" 비교할 수 있다.
         List<String> previouslyFailed = runs.findFirstByOrderByIdDesc()
                 .map(r -> SelfTestRun.failedNames(r.getItems())).orElse(List.of());
-        SelfTestRun run = runs.save(SelfTestRun.of(trigger, startedAt, requestedBy, items));
+        SelfTestRun run = runs.save(SelfTestRun.of(trigger, startedAt,
+                requester == null ? null : requester.email(), requester == null ? null : requester.tenantId(), items));
 
         auditResult(AuditType.SELF_TEST_RESULT, SelfTestItem.SELFTEST, trigger, items);
         auditResult(AuditType.INTEGRITY_CHECK_RESULT, SelfTestItem.INTEGRITY, trigger, items);

@@ -5,6 +5,7 @@ import com.edrdog.apiservice.audit.AuditResult;
 import com.edrdog.apiservice.audit.AuditService;
 import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
+import com.edrdog.apiservice.notify.AgentCheckNotifier;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,10 +30,13 @@ public class InternalAuditController {
     public static final int MAX_EVENTS = 100;
 
     private final AuditService audit;
+    private final AgentCheckNotifier checkNotifier;
     private final byte[] internalKey;
 
-    public InternalAuditController(AuditService audit, @Value("${edrdog.internal.key}") String internalKey) {
+    public InternalAuditController(AuditService audit, AgentCheckNotifier checkNotifier,
+                                   @Value("${edrdog.internal.key}") String internalKey) {
         this.audit = audit;
+        this.checkNotifier = checkNotifier;
         this.internalKey = internalKey.getBytes();
     }
 
@@ -69,6 +73,8 @@ public class InternalAuditController {
         long now = System.currentTimeMillis();
         List<AuditEntry> entries = req.events().stream().map(e -> toEntry(req, e, now)).toList();
         audit.recordAll(entries);
+        // 자체시험·무결성 실패는 조직 webhook 으로 알린다. 저장 뒤에 부르고, 통보가 실패해도 응답은 그대로다.
+        checkNotifier.onRecorded(entries);
         return new AgentAuditResponse(entries.size());
     }
 

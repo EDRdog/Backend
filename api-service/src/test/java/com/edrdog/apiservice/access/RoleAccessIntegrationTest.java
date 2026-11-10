@@ -34,6 +34,7 @@ class RoleAccessIntegrationTest extends AccessTestBase {
             new Call(HttpMethod.PATCH, "/api/incidents/i1/status"),
             new Call(HttpMethod.PUT, "/api/tenant/webhook"),
             new Call(HttpMethod.GET, "/api/tenant/webhook"),
+            new Call(HttpMethod.DELETE, "/api/tenant/webhook"),
             new Call(HttpMethod.POST, "/api/tenant/enroll-secret"),
             new Call(HttpMethod.GET, "/api/tenant/enroll-secret"),
             new Call(HttpMethod.POST, "/api/tenant/install-link"),
@@ -45,6 +46,7 @@ class RoleAccessIntegrationTest extends AccessTestBase {
             new Call(HttpMethod.GET, "/api/operations/selftest"),
             new Call(HttpMethod.POST, "/api/operations/selftest"),
             new Call(HttpMethod.PUT, "/api/me/webhook"),
+            new Call(HttpMethod.DELETE, "/api/me/webhook"),
             new Call(HttpMethod.POST, "/api/me/webhook/test"),
             new Call(HttpMethod.POST, "/api/me/hosts"),
             new Call(HttpMethod.DELETE, "/api/me/hosts/h1"));

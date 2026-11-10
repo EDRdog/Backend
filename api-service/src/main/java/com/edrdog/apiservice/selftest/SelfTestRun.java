@@ -42,6 +42,9 @@ public class SelfTestRun {
     @Column
     private String requestedBy;   // MANUAL 일 때 요청한 관리자 이메일
 
+    @Column
+    private Long requestedByTenantId;   // 요청자의 조직. 다른 조직에는 이메일을 가린다. 이 칸이 생기기 전 행은 null
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false)
     private List<SelfTestItem> items;
@@ -49,11 +52,13 @@ public class SelfTestRun {
     protected SelfTestRun() {
     }
 
-    public static SelfTestRun of(Trigger trigger, Instant startedAt, String requestedBy, List<SelfTestItem> items) {
+    public static SelfTestRun of(Trigger trigger, Instant startedAt, String requestedBy, Long requestedByTenantId,
+                                 List<SelfTestItem> items) {
         SelfTestRun run = new SelfTestRun();
         run.triggerType = trigger;
         run.startedAt = startedAt;
         run.requestedBy = requestedBy;
+        run.requestedByTenantId = requestedByTenantId;
         run.items = items;
         run.status = failedNames(items).isEmpty() ? SelfTestItem.Status.PASS : SelfTestItem.Status.FAIL;
         return run;
@@ -82,6 +87,10 @@ public class SelfTestRun {
 
     public String getRequestedBy() {
         return requestedBy;
+    }
+
+    public Long getRequestedByTenantId() {
+        return requestedByTenantId;
     }
 
     public List<SelfTestItem> getItems() {

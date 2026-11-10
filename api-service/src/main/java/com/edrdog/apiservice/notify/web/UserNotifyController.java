@@ -2,6 +2,10 @@ package com.edrdog.apiservice.notify.web;
 
 import com.edrdog.apiservice.access.RequiresRole;
 import com.edrdog.apiservice.access.Role;
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -9,6 +13,7 @@ import com.edrdog.apiservice.notify.AlertTarget;
 import com.edrdog.apiservice.notify.UserNotifyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,12 +42,14 @@ public class UserNotifyController {
 
     private final UserNotifyService notify;
     private final AuthService auth;
+    private final AuditService audit;
     private final String internalKey;
 
-    public UserNotifyController(UserNotifyService notify, AuthService auth,
+    public UserNotifyController(UserNotifyService notify, AuthService auth, AuditService audit,
                                @Value("${edrdog.internal.key}") String internalKey) {
         this.notify = notify;
         this.auth = auth;
+        this.audit = audit;
         this.internalKey = internalKey;
     }
 
@@ -55,6 +62,19 @@ public class UserNotifyController {
         Principal p = principal(authorization);
         notify.setWebhook(p.userId(), req.webhookUrl());
         return new UserWebhookResponse(p.userId(), req.webhookUrl());
+    }
+
+    @Operation(summary = "내 webhook 삭제", description = "로그인 유저의 개인 Slack webhook URL 을 비운다(204). 이미 비어 있어도 204. webhook_change 감사기록이 남는다.")
+    @RequiresRole(Role.ADMIN)
+    @DeleteMapping("/api/me/webhook")
+    public ResponseEntity<Void> clearWebhook(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            HttpServletRequest http) {
+        Principal p = principal(authorization);
+        notify.clearWebhook(p.userId());
+        audit.record(AuditEntry.user(p, AuditType.WEBHOOK_CHANGE, "me", AuditResult.SUCCESS,
+                "remove", http.getRemoteAddr()));
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "내 webhook 조회", description = "로그인 유저의 개인 Slack webhook URL 을 조회한다. 미설정이면 null.")

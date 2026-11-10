@@ -38,16 +38,19 @@ public class SelfTestController {
     }
 
     @Operation(summary = "자체시험·무결성 검증 결과 목록",
-            description = "최근 실행을 최신순으로 항목별 결과와 함께 준다. limit 기본 20, 최대 100.")
+            description = "최근 실행을 최신순으로 항목별 결과와 함께 준다. limit 기본 20, 최대 100. "
+                    + "다른 조직 관리자가 요청한 실행의 requestedBy 는 이메일 대신 고정 문구로 가린다.")
     @GetMapping
-    public List<SelfTestRunResponse> list(@RequestParam(defaultValue = "20") int limit) {
-        return service.recent(Math.max(1, Math.min(limit, MAX_LIMIT))).stream().map(SelfTestRunResponse::from).toList();
+    public List<SelfTestRunResponse> list(@RequestParam(defaultValue = "20") int limit,
+                                          @RequestAttribute(AccessInterceptor.PRINCIPAL) Principal p) {
+        return service.recent(Math.max(1, Math.min(limit, MAX_LIMIT))).stream()
+                .map(r -> SelfTestRunResponse.from(r, p.tenantId())).toList();
     }
 
     @Operation(summary = "자체시험·무결성 검증 즉시 실행", description = "지금 한 번 돌리고 그 결과를 201 로 준다.")
     @PostMapping
     public ResponseEntity<SelfTestRunResponse> run(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal p) {
-        SelfTestRun run = service.run(SelfTestRun.Trigger.MANUAL, p.email());
-        return ResponseEntity.status(HttpStatus.CREATED).body(SelfTestRunResponse.from(run));
+        SelfTestRun run = service.run(SelfTestRun.Trigger.MANUAL, p);
+        return ResponseEntity.status(HttpStatus.CREATED).body(SelfTestRunResponse.from(run, p.tenantId()));
     }
 }

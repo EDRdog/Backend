@@ -1,5 +1,6 @@
 package com.edrdog.apiservice.selftest;
 
+import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.notify.SlackWebhookClient;
 import com.edrdog.apiservice.operations.DependencyResult;
 import com.edrdog.apiservice.selftest.SelfTestItem.Status;
@@ -34,6 +35,7 @@ import static org.mockito.Mockito.when;
 class SelfTestServiceTest {
 
     private static final String WEBHOOK = "https://hooks.slack.com/services/T/B/x";
+    private static final Principal ADMIN = new Principal(1L, 5L, "admin@edrdog.com", "admin");
 
     private SelfTestRunRepository runs;
     private SelfTestChecks checks;
@@ -63,10 +65,11 @@ class SelfTestServiceTest {
 
     @Test
     void manualRunStoresItemsFromSelfTestAndIntegrity() {
-        SelfTestRun run = service("").run(Trigger.MANUAL, "admin@edrdog.com");
+        SelfTestRun run = service("").run(Trigger.MANUAL, ADMIN);
 
         assertEquals(Trigger.MANUAL, run.getTriggerType());
         assertEquals("admin@edrdog.com", run.getRequestedBy());
+        assertEquals(5L, run.getRequestedByTenantId());   // 다른 조직에 요청자 이메일을 가릴 때 쓴다
         assertEquals(List.of("database", "baseline"), run.getItems().stream().map(SelfTestItem::name).toList());
         assertEquals(Status.PASS, run.getStatus());   // SKIP 은 실패가 아니다
         verify(runs).save(run);
@@ -118,7 +121,7 @@ class SelfTestServiceTest {
         verify(slack, times(1)).send(eq(WEBHOOK), contains("random"));
 
         when(runs.findFirstByOrderByIdDesc()).thenReturn(Optional.of(
-                SelfTestRun.of(Trigger.SCHEDULED, Instant.now(), null, List.of(failed("random")))));
+                SelfTestRun.of(Trigger.SCHEDULED, Instant.now(), null, null, List.of(failed("random")))));
         service.run(Trigger.SCHEDULED, null);   // 같은 실패가 이어짐: 다시 통보하지 않는다
         verify(slack, times(1)).send(anyString(), anyString());
 
@@ -166,7 +169,7 @@ class SelfTestServiceTest {
     @Test
     void dependencyIsUpWhenLatestRunPassed() {
         when(runs.findFirstByOrderByIdDesc()).thenReturn(Optional.of(
-                SelfTestRun.of(Trigger.STARTUP, Instant.now(), null, List.of(SelfTestItem.pass("selftest", "database", "ok")))));
+                SelfTestRun.of(Trigger.STARTUP, Instant.now(), null, null, List.of(SelfTestItem.pass("selftest", "database", "ok")))));
 
         DependencyResult dep = service("").dependency();
 
@@ -177,7 +180,7 @@ class SelfTestServiceTest {
     @Test
     void dependencyIsDownAndNamesTheFailedItems() {
         when(runs.findFirstByOrderByIdDesc()).thenReturn(Optional.of(
-                SelfTestRun.of(Trigger.STARTUP, Instant.now(), null, List.of(failed("random")))));
+                SelfTestRun.of(Trigger.STARTUP, Instant.now(), null, null, List.of(failed("random")))));
 
         DependencyResult dep = service("").dependency();
 
@@ -197,7 +200,7 @@ class SelfTestServiceTest {
     void eachRunRecordsSelfTestAndIntegrityResultsInTheAuditLog() {
         when(checks.run()).thenReturn(List.of(failed("database")));
 
-        service("").run(Trigger.MANUAL, "admin@edrdog.com");
+        service("").run(Trigger.MANUAL, ADMIN);
 
         var captor = org.mockito.ArgumentCaptor.forClass(com.edrdog.apiservice.audit.AuditEntry.class);
         verify(audit, org.mockito.Mockito.times(2)).record(captor.capture());

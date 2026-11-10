@@ -1,5 +1,6 @@
 package com.edrdog.apiservice.tenant.web;
 
+import com.edrdog.apiservice.access.AccessInterceptor;
 import com.edrdog.apiservice.access.RequiresRole;
 import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.audit.AuditActor;
@@ -13,12 +14,15 @@ import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.tenant.TenantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,6 +59,17 @@ public class TenantController {
         Principal principal = auth.resolve(bearerToken(authorization));
         tenants.setWebhook(principal.tenantId(), req.webhookUrl());
         return new WebhookResponse(principal.tenantId(), req.webhookUrl());
+    }
+
+    @Operation(summary = "webhook 삭제", description = "로그인 유저(Bearer)의 tenant 에 저장된 Slack webhook URL 을 비운다(204). 이미 비어 있어도 204. webhook_change 감사기록이 남는다.")
+    @RequiresRole(Role.ADMIN)
+    @DeleteMapping("/api/tenant/webhook")
+    public ResponseEntity<Void> clearWebhook(
+            @RequestAttribute(AccessInterceptor.PRINCIPAL) Principal principal, HttpServletRequest http) {
+        tenants.clearWebhook(principal.tenantId());
+        audit.record(AuditEntry.user(principal, AuditType.WEBHOOK_CHANGE, "tenant", AuditResult.SUCCESS,
+                "remove", http.getRemoteAddr()));
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "내 webhook 조회", description = "로그인 유저(Bearer)의 tenant 에 저장된 webhook URL 을 조회한다.")

@@ -46,6 +46,14 @@ public class UserNotifyService {
         users.save(user);
     }
 
+    /** 저장된 개인 webhook 을 비운다. 이미 비어 있어도 그대로 성공한다. */
+    @Transactional
+    public void clearWebhook(Long userId) {
+        AppUser user = user(userId);
+        user.updateWebhook(null);
+        users.save(user);
+    }
+
     @Transactional(readOnly = true)
     public Optional<String> getWebhook(Long userId) {
         return Optional.ofNullable(user(userId).getSlackWebhookUrl());
