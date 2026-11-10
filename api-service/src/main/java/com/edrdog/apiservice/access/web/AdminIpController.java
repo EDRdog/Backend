@@ -73,6 +73,7 @@ public class AdminIpController {
             description = "단일 IPv4/IPv6 주소만 받는다(범위, CIDR, 와일드카드, 이름은 400). 이미 있으면 409. "
                     + "목록이 비어 있을 때 첫 IP 는 지금 접속한 IP 여야 하며 아니면 409(이 조직이 모두 잠기므로). "
                     + "등록하는 순간부터 그 조직 계정의 로그인과 관리 API 는 목록 밖 IP 에서 403 이다.")
+    @RequiresRole(value = Role.ADMIN, denyDemo = true)
     @PostMapping
     public ResponseEntity<AdminIpResponse> add(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal admin,
                                                @RequestBody AdminIpRequest req, HttpServletRequest http) {
@@ -85,6 +86,7 @@ public class AdminIpController {
     @Operation(summary = "허용 IP 삭제",
             description = "id 로 뺀다(204). 다른 조직의 id 나 없는 id 는 404. 다른 IP 가 남아 있는 동안 지금 접속한 IP 를 빼면 "
                     + "본인이 잠기므로 409. 마지막 하나를 빼면 목록이 비어 제한이 풀린다.")
+    @RequiresRole(value = Role.ADMIN, denyDemo = true)
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> remove(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal admin,
                                        @PathVariable Long id, HttpServletRequest http) {

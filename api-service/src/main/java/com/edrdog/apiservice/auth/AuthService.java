@@ -150,6 +150,10 @@ public class AuthService {
         return principal(authenticate(token));
     }
 
+    public boolean isDemoAccount(Long userId) {
+        return users.findById(userId).map(AppUser::isDemoAccount).orElse(false);
+    }
+
     public boolean mustChangePassword(Long userId) {
         return users.findById(userId).map(AppUser::isMustChangePassword).orElse(false);
     }

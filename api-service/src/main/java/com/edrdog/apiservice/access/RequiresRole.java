@@ -20,4 +20,7 @@ public @interface RequiresRole {
 
     /** true 면 패스워드 변경이 필요한 계정(KISA BF-08)도 통과시킨다. 내 정보와 패스워드 변경만 켠다. */
     boolean allowPasswordChange() default false;
+
+    /** true 면 공개 데모 계정(`demo_account`)의 요청을 403 으로 거절한다. 비밀번호가 공개돼 있어 남이 상태를 바꾸면 안 되는 쓰기에 켠다. */
+    boolean denyDemo() default false;
 }

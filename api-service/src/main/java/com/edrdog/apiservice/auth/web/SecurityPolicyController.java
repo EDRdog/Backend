@@ -46,7 +46,7 @@ public class SecurityPolicyController {
     @Operation(summary = "보안정책 변경",
             description = "maxLoginFailures(연속 실패 허용 횟수, 1~5), lockMinutes(잠금 분, 5~1440), idleMinutes(유휴 세션 종료 분, 1~60). "
                     + "셋 다 필요하고 범위 밖이면 400. 바뀐 값은 이전·이후가 감사기록(security_policy_change)으로 남는다.")
-    @RequiresRole(Role.ADMIN)
+    @RequiresRole(value = Role.ADMIN, denyDemo = true)
     @PutMapping
     public SecurityPolicyResponse put(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal p,
                                       @RequestBody SecurityPolicyRequest req, HttpServletRequest http) {
