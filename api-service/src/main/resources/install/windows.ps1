@@ -162,6 +162,14 @@ New-Service -Name $ServiceName `
     -Description '엔드포인트 행위를 수집해 EDRdog 서버로 보낸다' `
     -StartupType Automatic | Out-Null
 
+# 센서가 전부 멈추면 에이전트가 종료 코드 1 로 끝난다(ADR 025). 그때 SCM 이 1분 뒤 다시 띄운다.
+# failureflag 1 이 없으면 SCM 은 정상 정지 보고(종료 코드만 1)를 실패로 치지 않아 재시작하지 않는다.
+# 하루 동안 실패가 없으면 실패 횟수를 되돌린다.
+sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failure 종료 코드 $LASTEXITCODE)" }
+sc.exe failureflag $ServiceName 1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failureflag 종료 코드 $LASTEXITCODE)" }
+
 # --- 4. 확인 ---
 Write-Host '[4/4] 기동하고 확인한다'
 # 지금까지의 로그는 이전 실행 것이다. 여기부터 새로 나온 줄만 본다.

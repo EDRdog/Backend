@@ -1,4 +1,4 @@
-# 026. R3(SCRIPT_FROM_TEMP_PATH)는 실행 대상만 본다
+# 027. R3(SCRIPT_FROM_TEMP_PATH)는 실행 대상만 본다
 
 ## 배경
 

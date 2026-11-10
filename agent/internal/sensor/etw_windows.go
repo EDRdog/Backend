@@ -43,6 +43,17 @@ const (
 	eventDNSQueryCompleted = 3008 // DNS-Client 질의 완료. 3006(질의 발신)은 받지 않는다
 )
 
+// 시스템 프로세스 프로바이더. 프로세스 시작 이벤트에 커널이 명령행을 실어 준다.
+// MOF 이벤트라 이름으로 풀리지 않아 GUID 를 적는다. 셋 다 Windows 가 고정한 값이다.
+const (
+	systemProcessProviderGUID   = "{151F55DC-467D-471F-83B5-5F889D46FF66}"
+	systemProcessKeywordGeneral = 0x1
+	// 받은 이벤트의 Provider 는 SystemTrace, EventGuid 는 Process 클래스로 온다(ARM64 VM 에서 확인).
+	systemTraceGUID    = "{9E814AAD-3204-11D2-9A82-006008A86939}"
+	processClassGUID   = "{3D6FA8D0-FE05-11D0-9DDA-00C04FD7BA7C}"
+	opcodeProcessStart = 1
+)
+
 // etwProvider 는 센서 스위치 하나와 그에 맞는 프로바이더 설정이다.
 // spec 형식은 이름:EnableLevel:이벤트ID들:MatchAnyKeyword:MatchAllKeyword 다.
 // 이벤트 ID 를 빼면 커널 필터가 풀려 콜백까지 올라오는 양이 통째로 늘어난다.
@@ -92,6 +103,10 @@ type ETWSensor struct {
 	// ProcessStart 와 ProcessStop 을 따로 센다. 둘의 비율이 진단 근거다.
 	starts atomic.Uint64
 	stops  atomic.Uint64
+
+	// join 이 있으면 프로세스 시작을 시스템 프로세스 시작과 합쳐 명령행을 채운다. 시스템
+	// 프로바이더를 못 켠 기기에서는 nil 이고 예전처럼 NtQueryInformationProcess 로 읽는다.
+	join *ProcessJoin
 }
 
 // Name 은 센서 이름이다.
@@ -110,13 +125,13 @@ const etwHealthInterval = time.Minute
 // Run 은 ETW 세션을 열고 ctx 가 끝날 때까지 이벤트를 흘려보낸다.
 // 세션 실패를 삼키면 안 된다. 관리자 권한이 없을 때 수집이 조용히 0건이 된다.
 func (s *ETWSensor) Run(ctx context.Context, out chan<- event.Event) error {
-	session := etw.NewRealTimeSession(etwSessionName)
-	if err := session.Start(); err != nil {
+	session, systemLogger, err := s.openSession()
+	if err != nil {
 		return fmt.Errorf("ETW 세션(%s)을 열지 못했다. %s: %w", etwSessionName, sessionErrorHint(err, etwSessionName), err)
 	}
 	defer session.Stop()
 
-	guids, err := s.enableProviders(session)
+	guids, err := s.enableProviders(session, systemLogger)
 	if err != nil {
 		return err
 	}
@@ -156,9 +171,25 @@ func (s *ETWSensor) Run(ctx context.Context, out chan<- event.Event) error {
 	return ctx.Err()
 }
 
+// openSession 은 프로세스 센서가 켜져 있으면 시스템 로거 모드로 세션을 연다. 그래야 시스템 프로세스
+// 프로바이더를 같은 세션에 켜서 시작 이벤트 둘을 한 흐름으로 받는다(Windows 8 이상). 시스템 로거 세션은
+// 기기에 8개까지라 못 열 수 있다. 그때는 일반 세션으로 연다. 명령행 보강만 빠지고 나머지 수집은 산다.
+func (s *ETWSensor) openSession() (*etw.RealTimeSession, bool, error) {
+	if s.sensorEnabled("process") {
+		session := etw.NewSystemLoggerRealTimeSession(etwSessionName)
+		err := session.Start()
+		if err == nil {
+			return session, true, nil
+		}
+		s.logger().Warn("시스템 로거 세션을 열지 못해 일반 세션으로 연다. 곧 끝나는 프로세스는 명령행이 비게 된다", "err", err)
+	}
+	session := etw.NewRealTimeSession(etwSessionName)
+	return session, false, session.Start()
+}
+
 // enableProviders 는 켜진 센서에 해당하는 프로바이더만 활성화하고 센서별 GUID 를 돌려준다.
 // 하나라도 실패하면 멈춘다. 반쪽만 도는 상태는 0건보다 알아채기 어렵다.
-func (s *ETWSensor) enableProviders(session *etw.RealTimeSession) (map[string]string, error) {
+func (s *ETWSensor) enableProviders(session *etw.RealTimeSession, systemLogger bool) (map[string]string, error) {
 	guids := make(map[string]string, len(etwProviders))
 	for _, p := range etwProviders {
 		if !s.sensorEnabled(p.sensor) {
@@ -172,6 +203,16 @@ func (s *ETWSensor) enableProviders(session *etw.RealTimeSession) (map[string]st
 			return nil, fmt.Errorf("%s 프로바이더를 켜지 못했다(%s): %w", p.sensor, p.spec, err)
 		}
 		guids[p.sensor] = provider.GUID
+	}
+
+	// 명령행 보강은 실패해도 멈추지 않는다. 없으면 긴 프로세스는 여전히 명령행이 잡힌다.
+	if systemLogger {
+		sys := etw.Provider{GUID: systemProcessProviderGUID, EnableLevel: 0xff, MatchAnyKeyword: systemProcessKeywordGeneral}
+		if err := session.EnableProvider(sys); err != nil {
+			s.logger().Warn("시스템 프로세스 프로바이더를 켜지 못했다. 곧 끝나는 프로세스는 명령행이 비게 된다", "err", err)
+		} else {
+			s.join = &ProcessJoin{}
+		}
 	}
 
 	// 패킷 캡처 프로바이더는 캡처가 실제로 열렸을 때만 켠다.
@@ -263,6 +304,15 @@ func (s *ETWSensor) forward(ctx context.Context, consumer *etw.Consumer, traceEn
 	health := time.NewTicker(etwHealthInterval)
 	defer health.Stop()
 
+	send := func(e event.Event) bool {
+		select {
+		case out <- e:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -271,18 +321,28 @@ func (s *ETWSensor) forward(ctx context.Context, consumer *etw.Consumer, traceEn
 			return true
 		case <-health.C:
 			s.reportHealth()
+			// 이벤트가 끊긴 동안에도 기다리던 시작이 묶이지 않게 벽시계로 한 번 더 본다.
+			if s.join != nil {
+				for _, start := range s.join.Expire(time.Now()) {
+					if e, keep := s.mapHeld(start, true); keep && !send(e) {
+						return false
+					}
+				}
+			}
 		case raw, ok := <-consumer.Events:
 			if !ok {
 				return true
 			}
-			e, keep := s.convert(raw, guids)
-			if !keep {
-				continue
-			}
-			select {
-			case out <- e:
-			case <-ctx.Done():
+			if e, keep := s.convert(raw, guids); keep && !send(e) {
 				return false
+			}
+			// 짝을 기다리다 기한이 지난 시작은 여기서 내보낸다. 기준은 방금 받은 이벤트의 시각이다.
+			if s.join != nil {
+				for _, start := range s.join.Expire(raw.System.TimeCreated.SystemTime) {
+					if e, keep := s.mapHeld(start, true); keep && !send(e) {
+						return false
+					}
+				}
 			}
 		}
 	}
@@ -307,10 +367,30 @@ func (s *ETWSensor) convert(raw *etw.Event, guids map[string]string) (event.Even
 			s.starts.Add(1)
 			props := properties(raw)
 			s.enrichProcess(props)
+			if s.join != nil {
+				// 명령행은 같은 PID 의 시스템 프로세스 시작이 채운다. 짝이 먼저 와 있었으면 바로 나간다.
+				if start, ok := s.join.Hold(props, at); ok {
+					return s.mapHeld(start, false)
+				}
+				return event.Event{}, false
+			}
 			return MapProcess(s.Factory, at, props, procInfo, s.Hasher)
 		case eventProcessStop:
 			// 종료는 이벤트로 내보내지 않는다. 서버 스키마에 해당 타입이 없다. 세기만 한다.
 			s.stops.Add(1)
+			// 짝을 못 만난 시작이 있으면 명령행 없이라도 내보낸다.
+			if s.join != nil {
+				if start, ok := s.join.Release(prop(properties(raw), propProcessID)); ok {
+					return s.mapHeld(start, false)
+				}
+			}
+		}
+
+	case s.join != nil && sameGUID(guid, systemTraceGUID):
+		if sameGUID(raw.System.EventGuid, processClassGUID) && raw.System.Opcode.Value == opcodeProcessStart {
+			if start, ok := s.join.Take(properties(raw)); ok {
+				return s.mapHeld(start, false)
+			}
 		}
 
 	case sameGUID(guid, guids["network"]):
@@ -352,10 +432,27 @@ func (s *ETWSensor) enrichProcess(props map[string]string) {
 	if path := procInfo.Name(pid); path != "" {
 		props[propImagePath] = path
 	}
+	// 시스템 프로세스 시작이 명령행을 채울 때는 읽지 않는다. 곧 끝나는 프로세스에서는 어차피 실패한다.
+	if s.join != nil {
+		return
+	}
 	// 명령행은 프로세스당 한 번만 필요하므로 캐시를 씌우지 않는다.
 	if cmdline := liveProc.Cmdline(pid); cmdline != "" {
 		props[propCommandLine] = cmdline
 	}
+}
+
+// mapHeld 는 짝 지은(또는 짝을 못 만난) 시작을 시작 시각 그대로 이벤트로 바꾼다.
+// live 면 아직 살아 있을 프로세스라 명령행이 비었을 때 직접 읽어 채운다. 오래 사는 프로세스가 짝을 잃은 경우다.
+func (s *ETWSensor) mapHeld(start HeldStart, live bool) (event.Event, bool) {
+	if live && prop(start.Props, propCommandLine) == "" {
+		if pid, ok := parsePID(prop(start.Props, propProcessID)); ok {
+			if cmdline := liveProc.Cmdline(pid); cmdline != "" {
+				start.Props[propCommandLine] = cmdline
+			}
+		}
+	}
+	return MapProcess(s.Factory, start.At, start.Props, procInfo, s.Hasher)
 }
 
 // reportHealth 는 지금까지 받은 프로세스 이벤트 수를 남긴다.

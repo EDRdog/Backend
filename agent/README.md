@@ -35,19 +35,29 @@ macOS 라이브 캡처에서 실제로 잡힌 것이다. 암호화된 TLS 1.3 �
 프로세스의 소켓을 못 읽는 것으로 의심하지만 **확인된 것은 아니다.** 탐지 대상은 사용자가 실행한
 프로그램이라 실용적인 손해는 작지만, "항상 붙는다" 고 말할 수는 없다.
 
-**확인 안 된 것 (전부 Windows 다)**
+**Windows 는 ARM64 VM 에서만 확인했다**
 
-- **Windows ETW 센서를 실제 Windows 기기에서 한 번도 돌려보지 않았다.** 크로스 빌드와 순수 로직
-  단위 테스트까지가 전부다
-- **상수가 틀려도 빌드는 통과하고 조용히 0건이 된다. 이게 가장 위험하다.** 프로바이더 GUID,
-  keyword 비트, 이벤트 ID 는 컴파일러가 검사해 주지 않는다. 값 하나가 어긋나면 오류 없이
-  이벤트만 안 온다
-- **pktmon 으로 TLS SNI 를 받는 경로 전체가 미검증이다.** 이벤트 160 의 필드 배치는 Microsoft 의
-  NetMon 파서와 드라이버 헤더 두 곳을 대조해 잡았지만 실기기에서 확인한 것은 아니다. 어긋나면
-  `sizeMismatch` 로 잡히게 해 두었다. **Windows Defender 가 pktmon 조작을 막을 가능성이 이 경로에서
-  가장 큰 위험이다.** 공격 기법으로 공개된 방식이라 휴리스틱 탐지가 실재한다
-- Windows 서비스 등록과 `-service` 경로도 실기기 미검증이다
-- 설치 스크립트 두 개 다 실기기 미검증이다
+2026-11-11 Windows 11 ARM64 Pro VM(UTM, 빌드 26300.9711, Defender 실시간 보호 켬)에서 로컬 서버에
+붙여 돌렸다. 프로세스(notepad, 부모 powershell), 네트워크, DNS(example.org), 파일(시작프로그램 폴더
+CREATE), L7(TLS 1.3, SNI example.org) 다섯 종이 ClickHouse 까지 들어왔다. 몇 분씩 짧게 돌린 결과다.
+
+처음 돌렸을 때는 **ETW 센서가 관리자 권한에서도 시작하자마자 멈췄다.** golang-etw 가 이벤트 ID 필터
+버퍼를 붙잡아 두지 않아서 Windows 가 쓰레기 값을 읽고 `The parameter is incorrect` 를 냈다. 그래서
+라이브러리를 `third_party/golang-etw` 에 복사해 고쳐 쓴다(`docs/design-docs/decisions/025`).
+크로스 빌드와 단위 테스트로는 잡히지 않았다.
+
+아직 안 본 것:
+
+- **x64 데스크톱 Windows.** 실사용 PC 는 대부분 x64 다. 위 결과는 ARM64 VM 조건이다. x64 는 Windows Server 2025 GitHub Actions 러너에서 센서까지만 한 번 봤다(`internal/sensor/etw_live_windows_test.go`, `go test -tags etwlive`, 2026-11-11). 서버 전송, kill, 서비스 설치는 x64 에서 본 적이 없다
+- Defender 가 pktmon 조작을 막는지는 짧게 몇 번 돌려 막히지 않은 것까지만 봤다. 공격 기법으로
+  공개된 방식이라 휴리스틱 탐지가 실재하고, 오래 돌리거나 다른 Defender 버전에서는 다를 수 있다
+- 서버가 내려주는 설치 스크립트(`api-service/.../install/windows.ps1`). `packaging/install-windows.ps1`
+  은 같은 VM 에서 지문이 맞는 경우로 설치까지 돌렸고, 서비스가 LocalSystem 으로 떠서 ETW 세션을
+  열었다. ETW 세션을 밖에서 끊어 에이전트를 종료 코드 1 로 끝내자 SCM 이 60초 뒤 다시 띄웠다.
+  재부팅 뒤에도 SCM 이 다시 띄워 수집이 이어졌다
+- 지문이 다른 서버에서 설치 스크립트가 멈추는지
+- IPv6 연결(검증 절차 5번). 시험한 회선에 IPv6 이 없었다
+- 아무도 로그인하지 않은 부팅. VM 에 자동 로그인이 켜져 있었다
 
 확인 절차는 아래 [Windows 실기기 검증 절차](#windows-실기기-검증-절차) 에 우선순위 순으로 정리해 두었다.
 
@@ -538,6 +548,8 @@ GOOS=windows GOARCH=amd64 go build ./...
 ### Windows 쪽은 실기기에서 검증되지 않았다
 
 크로스 컴파일과 순수 로직 단위 테스트까지만 통과했다. 확인하지 못한 것은 센서만이 아니다.
+아래 표는 ARM64 VM 검증 전(2026-11-11 이전) 상태다. VM 에서 본 결과는
+[Windows 실기기 검증 절차](#windows-실기기-검증-절차) 각 항목의 VM 결과 줄에 있다. x64 는 여전히 아래 표 그대로다.
 
 | | 확인 못 한 것 |
 |:---|:---|
@@ -722,7 +734,8 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json -selftest
 ```
 
-기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트 4종.
+기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트.
+ARM64 VM 에서는 process, network, dns, file, script, l7 여섯 종이 들어왔다.
 
 ### 1. 관리자 권한이 없으면 오류로 죽는가
 
@@ -734,7 +747,9 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json
 ```
 
-- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다**
+- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다.** 센서가 전부 멈추면 에이전트가 끝나게 한 것은
+  ARM64 VM 에서 이 항목이 어긋난 뒤다(그 전에는 오류만 남기고 계속 돌았다). 권한을 낮춰 띄울 때는
+  `runas /trustlevel:0x20000` 이 비밀번호 없이 된다
 
   ```
   ETW 세션(EDRdog-Agent)을 열지 못했다. 권한이 없다. 관리자 권한으로 실행하거나
@@ -748,7 +763,7 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 | 오류 코드 | 나와야 할 안내 | 일으키는 법 |
 |:---|:---|:---|
 | `ERROR_ACCESS_DENIED`(5) | 관리자 권한 / `Performance Log Users` 그룹 / LocalSystem 서비스 | 일반 사용자로 실행 |
-| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 에이전트를 두 개 띄우거나, 아래처럼 세션을 미리 만들어 둔다 |
+| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 실제로는 나오지 않는다. golang-etw 가 같은 이름의 세션을 멈추고 다시 연다. ARM64 VM 에서 아래처럼 세션을 미리 만들어 둬도 에이전트가 그 세션을 가져갔다 |
 | 그 밖 | 관리자 권한 안내로 물러난다 | |
 
 ```powershell
@@ -852,6 +867,8 @@ curl.exe https://example.com     # 443 으로 나가야 한다
 - `destPort=0` 이면 스왑 문제가 아니라 속성 이름이 다르거나 값이 숫자가 아닌 것이다.
   65535 를 넘는 값은 에이전트가 0 으로 떨어뜨린다
 
+**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711):** `curl.exe` 로 443 과 80 을 각각 열자 `destPort` 가 443, 80 으로 왔다. 스왑은 필요 없다. 다만 `curl.exe` 처럼 곧 끝나는 프로세스는 연결 이벤트의 `process` 가 비어 있었다(PID 로 이름을 찾기 전에 프로세스가 끝난다)
+
 ### 5. IPv6 연결(ID 28)의 `daddr` 가 IP 로 파싱되는가
 
 IPv4 와 IPv6 은 이벤트 ID 가 다르다(12 / 28). IPv6 쪽 `daddr` 가 IP 문자열이 아닌 모양으로 오면
@@ -873,6 +890,8 @@ curl.exe -6 https://ipv6.google.com
   Select-String -Path T6.xml -Pattern 'daddr' | Select-Object -First 10
   ```
 - IPv6 이 안 되는 회선이면 이 항목은 확인할 수 없다. 그때는 확인 못 했다고 남겨라
+
+**VM 결과(2026-11-11):** 확인하지 못했다. 시험한 회선(UTM 공유 네트워크, 맥 본체 포함)에 IPv6 인터넷 연결이 없어 `ipv6.google.com` 이름 풀이부터 실패했다
 
 ### 6. Kernel-File 의 장치 경로가 감시 경로 필터에 걸리는가
 
@@ -943,6 +962,8 @@ powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
 - 비밀값 옵션(`-Password`, `/token:`, `-EncodedCommand` 등)의 값이 `<redacted>` 로 가려지는지도
   같이 본다
 
+**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711, Defender 켬):** 5초 사는 `powershell.exe -NoProfile -Command ...` 는 인자가 그대로 실렸다. 곧 끝나는 `cmd.exe /c exit` 50건은 **1건(2%)만** 인자가 실렸고 나머지는 `\Device\HarddiskVolume3\Windows\System32\cmd.exe` 처럼 장치 경로만 남았다. **짧게 끝나는 프로세스의 명령행 탐지는 사실상 안 됐다.** 그래서 시스템 프로세스 프로바이더에서 명령행을 받게 바꿨고(ADR 026), 고친 뒤 같은 시험에서 50건 모두 실렸다(ARM64 빌드, amd64 빌드의 x64 에뮬레이션 둘 다). 합친 명령행의 첫 토큰은 장치 경로로 남는다. `-Password <값>` 은 `<redacted>` 로 가려졌다. 단 PowerShell `-ArgumentList "-Password","hunter2"` 처럼 따옴표와 쉼표로 붙은 형태는 가려지지 않았다
+
 ### 8. 서비스로 등록해 부팅 후 자동 기동되는가
 
 지금까지는 콘솔에서 확인한 것이다. 서비스 모드는 SCM 과 대화하는 경로가 따로 있고
@@ -969,6 +990,10 @@ Get-Service edrdog-agent          # 로그인 없이도 Running 이어야 한다
   서비스가 뜨는데 이벤트만 0건이면 콘솔로 다시 띄워 로그를 직접 봐라. 이건 지금 구조의 약점이고,
   실기기 검증에서 문제가 되면 파일 로깅을 넣어야 한다
 
+**VM 결과(2026-11-11):** `install-windows.ps1` 로 설치하자 `BINARY_PATH_NAME` 에 `-service` 가 붙고 Running 이 됐다. 재부팅하니 부팅 6초 뒤 에이전트가 등록 실패로 종료 코드 1 로 끝났고(서버까지 가는 터널이 아직 없었다), SCM 이 60초 뒤 다시 띄워 다섯 종이 다시 들어왔다. **에이전트는 등록에 실패하면 다시 시도하지 않고 끝난다.** SCM 재시작이 하루 3번이라 부팅 후 3분 넘게 서버에 닿지 않으면 그날은 수집이 멈췄다. 그래서 등록을 될 때까지 다시 시도하게 바꿨다(ADR 026). 고친 amd64 빌드(x64 에뮬레이션)를 서비스로 깔고 서버 없이 재부팅하자 7분 넘게 같은 프로세스가 살아 있었고 SCM 실패 기록이 0건이었다. 터널을 연 뒤 다음 시도에서 붙어 이벤트가 다시 들어왔다. VM 에 자동 로그인이 켜져 있어 로그인 없는 부팅은 엄밀히 보지 못했다.
+
+처음에는 설치 스크립트가 **구문 오류로 멈췄다.** 한국어 Windows 의 PowerShell 5.1 은 BOM 없는 파일을 cp949 로 읽어 한글 문자열이 깨진다. 그래서 `install-windows.ps1` 은 UTF-8 BOM 을 붙여 두고 `scripts/check.sh` 가 확인한다
+
 ### 9. 조치가 실제로 나가는가
 
 ```powershell
@@ -980,6 +1005,8 @@ notepad.exe
 - `NO_MATCH` 면 `target` 문자열과 실제 이미지 경로의 매칭 규칙을 본다. Windows 는 대소문자를
   무시하고 비교한다
 - 여러 개 떠 있을 때 전부 죽는지, 일부만 죽으면 `FAILED` 로 보고되는지도 같이 본다
+
+**VM 결과(2026-11-11):** `ping.exe` 네 개를 띄우고 responder 로 kill 을 보내자 네 개가 다 죽고 `KILLED`, 메시지에 pid 네 개가 왔다. Windows 11 의 `notepad.exe` 는 ssh 세션(로그인 화면 밖)에서 띄우면 스스로 죽어서 `NO_MATCH` 가 났다. 시험 대상으로 쓰지 마라. 같은 host 에 60초 안에 다시 보내면 `COOLDOWN` 이다
 
 ### 10. TLS SNI 가 pktmon 으로 잡히는가
 

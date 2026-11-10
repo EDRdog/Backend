@@ -91,13 +91,19 @@ func runAgent(ctx context.Context, opts options, log *slog.Logger) error {
 		Timeout:      cfg.FlushInterval(),
 	}, httpClient)
 
-	if err := client.Enroll(ctx); err != nil {
+	// 서버에 닿을 때까지 다시 시도한다. 끝나 버리면 부팅 직후 오프라인인 기기는 그날 수집이 멈춘다.
+	if err := retry(ctx, log, "등록", 5*time.Second, 5*time.Minute, client.Enroll); err != nil {
 		return fmt.Errorf("등록 실패: %w", err)
 	}
 	log.Info("등록 완료", "host", cfg.HostIdentifier, "platform", goruntime.GOOS, "version", version)
 
 	// 첫 하트비트로 어떤 센서를 켤지·어디를 감시할지 수집 설정을 받는다.
-	beat, err := client.Heartbeat(ctx)
+	var beat transport.Heartbeat
+	err = retry(ctx, log, "첫 하트비트", 5*time.Second, 5*time.Minute, func(ctx context.Context) error {
+		var err error
+		beat, err = client.Heartbeat(ctx)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("수집 설정을 받지 못했다: %w", err)
 	}
@@ -131,13 +137,16 @@ func runAgent(ctx context.Context, opts options, log *slog.Logger) error {
 
 	log.Info("수집 시작", "sensors", names, "flush", flush, "watch", beat.Config.WatchPaths)
 
-	// 수집과 조치는 서로를 기다리면 안 된다.
+	// 수집과 조치는 서로를 기다리면 안 된다. 수집이 끝나면(센서 전멸 포함) 조치 채널도 닫는다.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var wg sync.WaitGroup
 	var collectErr error
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		collectErr = engine.Run(ctx, sensors)
+		cancel()
 	}()
 	go func() {
 		defer wg.Done()

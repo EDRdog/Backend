@@ -171,3 +171,47 @@ func waitFor(t *testing.T, cond func() bool) {
 	}
 	t.Fatal("조건이 시간 안에 만족되지 않았다")
 }
+
+type failingSensor struct{ name string }
+
+func (s failingSensor) Name() string { return s.name }
+
+func (s failingSensor) Run(context.Context, chan<- event.Event) error {
+	return errors.New("세션을 열지 못했다")
+}
+
+// 센서가 전부 죽었는데 계속 돌면 이벤트 0건으로 멀쩡해 보인다. 오류로 끝나야 한다.
+func TestRunFailsWhenEverySensorStops(t *testing.T) {
+	r := New(&fakeSender{}, Options{BatchSize: 10, FlushInterval: time.Hour})
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), []Sensor{failingSensor{"a"}, failingSensor{"b"}}) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("센서가 모두 멈췄는데 오류가 없다")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("센서가 모두 멈췄는데 Run 이 끝나지 않는다")
+	}
+}
+
+// 하나만 죽으면 나머지 센서로 계속 수집한다.
+func TestRunKeepsGoingWhenOneSensorStops(t *testing.T) {
+	r := New(&fakeSender{}, Options{BatchSize: 10, FlushInterval: time.Hour})
+	alive := &fakeSensor{name: "alive", emit: 1, ended: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx, []Sensor{failingSensor{"dead"}, alive}) }()
+
+	waitFor(t, func() bool { return r.Buffer().Len() == 1 })
+	select {
+	case err := <-done:
+		t.Fatalf("살아 있는 센서가 있는데 Run 이 끝났다: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}

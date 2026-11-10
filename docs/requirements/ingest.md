@@ -1,6 +1,6 @@
 # 수집과 등록 (PRD: `docs/product-specs/service.md` F1, F2)
 
-에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `021`, `023`, `024`.
+에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `021`, `023`, `024`, `025`, `026`.
 
 ## 발행 계약
 
@@ -44,13 +44,17 @@
 | AGT-15 | 켤 센서가 하나도 없으면 에이전트가 기동을 거부한다 | `agent/README.md` 의 기동 절차. 조용히 0건으로 도는 것을 막는다 | `docs/design-docs/decisions/008-own-go-agent.md` | 자동 |
 | AGT-22 | eslogger 줄이 4MB 를 넘으면 그 줄만 건너뛰고(개수를 로그로 남기고) 뒤의 이벤트를 계속 읽는다 | `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerPumpSkipsOverlongLineAndContinues`, `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerSensorSurvivesOverlongLine` | `docs/design-docs/decisions/023-skip-overlong-eslogger-line.md` | 자동 |
 | AGT-23 | 읽기가 끝나면 자식(eslogger)을 먼저 죽이므로 센서가 영원히 막히지 않는다 | `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerSensorDoesNotHangWhenPumpEndsWhileChildAlive` | `docs/design-docs/decisions/023-skip-overlong-eslogger-line.md` | 자동 |
-| AGT-25 | root 데몬으로 돌아도 감시 경로의 `~` 가 `/Users` 아래 사용자 홈마다 펴진다(Shared, 숨김 항목 제외) | `agent/internal/sensor/eslogger_map_test.go::TestExpandWatchPathsForEveryHome`, `agent/internal/sensor/eslogger_map_test.go::TestUserHomesSkipsSharedAndHidden` | `docs/security/detection-test-2026-11-10/README.md` 결함 1 | 자동 |
+| AGT-24 | 센서가 전부 오류로 멈추면 에이전트가 오류로 끝난다. 일부만 멈추면 나머지로 계속 수집한다 | `agent/internal/runtime/runtime_test.go::TestRunFailsWhenEverySensorStops`, `agent/internal/runtime/runtime_test.go::TestRunKeepsGoingWhenOneSensorStops` | `docs/design-docs/decisions/025-vendor-patched-golang-etw.md` | 자동 |
+| AGT-25 | 서버 등록과 첫 하트비트가 실패해도 에이전트가 끝나지 않고 간격을 늘려 가며 다시 시도한다 | `agent/cmd/edrdog-agent/retry_test.go::TestRetryKeepsTryingUntilSuccess`, `agent/cmd/edrdog-agent/retry_test.go::TestRetryStopsWhenContextEnds` | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 자동 |
+| AGT-26 | Windows 프로세스 시작은 같은 PID 의 시스템 프로세스 시작과 합쳐 명령행을 싣는다. 어느 쪽이 먼저 와도 합치고, 짝이 2초 안에 안 오거나 프로세스가 끝나면 시작 시각 그대로 내보낸다 | `agent/internal/sensor/etw_map_test.go::TestProcessJoinMergesCommandLineIntoHeldStart`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinKeepsCommandLineThatArrivesFirst`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinReleasesHeldStartOnStop`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinExpiresStartsHeldTooLong`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinEmitsAtOnceWhenPIDUnreadable` | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 자동 |
+| AGT-27 | x64 Windows 에서 ETW 센서와 pktmon 이 실제로 열려 다섯 종(script, network, dns, file, l7)을 내고, 곧 끝나는 프로세스 50개 중 45개 이상의 명령행을 싣는다 | `agent/internal/sensor/etw_live_windows_test.go::TestETWLive` (`-tags etwlive`, 관리자 권한 Windows 에서 손으로 돌린다. 2026-11-11 Windows Server 2025 x64 러너에서 통과) | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 수동 |
+| AGT-28 | root 데몬으로 돌아도 감시 경로의 `~` 가 `/Users` 아래 사용자 홈마다 펴진다(Shared, 숨김 항목 제외) | `agent/internal/sensor/eslogger_map_test.go::TestExpandWatchPathsForEveryHome`, `agent/internal/sensor/eslogger_map_test.go::TestUserHomesSkipsSharedAndHidden` | `docs/security/detection-test-2026-11-10/README.md` 결함 1 | 자동 |
 
 ## 수동 확인
 
 | ID | 확인할 것 | 방법 | 상태 |
 |---|---|---|---|
 | AGT-M1 | macOS 실기기에서 4종 이벤트가 올라온다 | 에이전트 설치 후 전체 디스크 접근 권한을 켜고 `-selftest` 로 확인 | 수동 |
-| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차 | 미구현 |
+| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차. Windows 11 ARM64 VM(UTM, 26300.9711)에서 다섯 종(process, network, dns, file, l7)이 로컬 서버까지 오는 것을 봤다(2026-11-11). `packaging/install-windows.ps1` 설치, 서비스 재시작, 재부팅 후 기동, 포트 값, kill 도 봤다. 곧 끝나는 프로세스 명령행은 50건 중 1건이었다가 ADR 026 뒤 50건 모두 실렸다. amd64 빌드도 x64 에뮬레이션으로 같은 시험을 통과했다. IPv6, x64 실기기, 서버가 내려주는 설치 스크립트는 아직 안 봤다 | 수동 |
 | AGT-M3 | 인증서 고정이 실제로 다른 서버를 거부한다 | 다른 인증서로 서명된 서버를 가리켜 붙지 않는 것을 확인 | 수동 |
 | AGT-M4 | 설치 스크립트가 지문이 다른 서버에서 `server.pem` 을 쓰기 전에 멈춘다 | macOS 두 스크립트의 대조 줄은 로컬 `openssl s_server` 로 일치, 불일치, 서버 없음을 돌려 확인했다(2026-11-10). Windows 두 스크립트는 실기기에서 틀린 지문으로 돌려 지문이 다르다로 멈추는지 봐야 한다(아직 안 봤다) | 수동 |

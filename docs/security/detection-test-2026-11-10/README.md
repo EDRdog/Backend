@@ -73,8 +73,8 @@ SE-01 을 두 숫자로 적는 이유: KISA 는 알려진 악성 시료만 실�
 
 고친 것.
 
-- 결함 1: root 데몬이면 `~` 를 `/Users` 아래 사용자 홈마다 편다(`agent/internal/sensor/eslogger_map.go` ExpandWatchPaths, 요구사항 AGT-25).
-- 결함 2: MACOS_TMUTIL_DELETE_BACKUP 은 실행 파일이 tmutil 일 때만 본다. SCRIPT_FROM_TEMP_PATH 는 명령행의 아무 인자가 아니라 실행 대상(명령의 첫 토큰, 인터프리터가 읽는 스크립트 파일)만 본다(ADR 026, 요구사항 DET-27).
+- 결함 1: root 데몬이면 `~` 를 `/Users` 아래 사용자 홈마다 편다(`agent/internal/sensor/eslogger_map.go` ExpandWatchPaths, 요구사항 AGT-28).
+- 결함 2: MACOS_TMUTIL_DELETE_BACKUP 은 실행 파일이 tmutil 일 때만 본다. SCRIPT_FROM_TEMP_PATH 는 명령행의 아무 인자가 아니라 실행 대상(명령의 첫 토큰, 인터프리터가 읽는 스크립트 파일)만 본다(ADR 027, 요구사항 DET-27).
 
 조건: 본 시험과 같은 맥, 같은 로컬 스택. detector 만 수정본으로 다시 띄웠고(17:41:44 UTC) 10분 뒤부터 쟀다. 에이전트는 수정본 바이너리(버전 `dettest-fix`)로 바꿨다. 바꾸면 전체 디스크 접근 권한이 풀려 다시 켰다. 결함과 관련된 D02·D03·D08 만 돌렸다. 나머지 7개는 본 시험 결과를 그대로 쓴다(바꾼 코드가 닿지 않는다).
 
