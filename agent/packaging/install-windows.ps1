@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     EDRdog 에이전트를 Windows 에 설치한다.
 

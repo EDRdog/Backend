@@ -51,6 +51,6 @@
 | ID | 확인할 것 | 방법 | 상태 |
 |---|---|---|---|
 | AGT-M1 | macOS 실기기에서 4종 이벤트가 올라온다 | 에이전트 설치 후 전체 디스크 접근 권한을 켜고 `-selftest` 로 확인 | 수동 |
-| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차. Windows 11 ARM64 VM(UTM, 26300.9711)에서 다섯 종(process, network, dns, file, l7)이 로컬 서버까지 오는 것을 봤다(2026-11-11). `packaging/install-windows.ps1` 설치와 서비스 재시작도 봤다. x64 실기기와 서버가 내려주는 설치 스크립트는 아직 안 봤다 | 수동 |
+| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차. Windows 11 ARM64 VM(UTM, 26300.9711)에서 다섯 종(process, network, dns, file, l7)이 로컬 서버까지 오는 것을 봤다(2026-11-11). `packaging/install-windows.ps1` 설치, 서비스 재시작, 재부팅 후 기동, 포트 값, kill 도 봤다. 곧 끝나는 프로세스는 명령행이 50건 중 1건만 실렸다. IPv6, x64 실기기, 서버가 내려주는 설치 스크립트는 아직 안 봤다 | 수동 |
 | AGT-M3 | 인증서 고정이 실제로 다른 서버를 거부한다 | 다른 인증서로 서명된 서버를 가리켜 붙지 않는 것을 확인 | 수동 |
 | AGT-M4 | 설치 스크립트가 지문이 다른 서버에서 `server.pem` 을 쓰기 전에 멈춘다 | macOS 두 스크립트의 대조 줄은 로컬 `openssl s_server` 로 일치, 불일치, 서버 없음을 돌려 확인했다(2026-11-10). Windows 두 스크립트는 실기기에서 틀린 지문으로 돌려 지문이 다르다로 멈추는지 봐야 한다(아직 안 봤다) | 수동 |
