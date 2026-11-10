@@ -391,7 +391,7 @@ data:
   macos_sysadminctl_add_admin.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/macos/process_creation/proc_creation_macos_sysadminctl_add_user_to_admin_group.yml (id 652c098d-dc11-4ba6-8566-c20e89042f2b)
-    # 바꾼 것: 없음.
+    # 바꾼 것: -admin 이 명령행 끝에 오는 경우를 더했다.
     title: User Added To Admin Group Via Sysadminctl
     id: 652c098d-dc11-4ba6-8566-c20e89042f2b
     name: macos_sysadminctl_add_admin
@@ -407,13 +407,18 @@ data:
     logsource:
       category: process_creation
     detection:
-      selection:
+      selection_img:
         # Creates and adds new user to admin group
         Image|endswith: '/sysadminctl'
+      selection_cli:
         CommandLine|contains|all:
           - ' -addUser '
           - ' -admin '
-      condition: selection
+      # -admin 이 명령행 끝에 오면 뒤 공백이 없어 위 조건이 놓친다.
+      selection_cli_end:
+        CommandLine|contains: ' -addUser '
+        CommandLine|endswith: ' -admin'
+      condition: selection_img and 1 of selection_cli*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
     level: medium
   macos_tmutil_delete_backup.yml: |
@@ -467,7 +472,7 @@ data:
   mimikatz_command_line.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_hktl_mimikatz_command_line.yml (id a642964e-bead-4bed-8910-1bb4d63e3b4d)
-    # 바꾼 것: 없음.
+    # 바꾼 것: 종료(kill)를 권고하는 룰이라 오탐을 줄였다. 이름(mimikatz, DumpCreds)이나 모듈 이름(token:: 등)만 보던 조건은 빼고 module::function 쌍만 본다(git commit 메시지나 cargo test token::tests 가 걸렸다). Image 가 mimikatz.exe 인 실행을 더했다.
     title: HackTool - Mimikatz Execution
     id: a642964e-bead-4bed-8910-1bb4d63e3b4d
     name: mimikatz_command_line
@@ -484,35 +489,44 @@ data:
     logsource:
       category: process_creation
     detection:
-      selection_tools_name:
+      selection_image:
+        Image: 'mimikatz.exe'
+      selection_functions:
         CommandLine|contains:
-          - 'DumpCreds'
-          - 'mimikatz'
-      selection_function_names: # To cover functions from modules that are not in module_names
-        CommandLine|contains:
-          - '::aadcookie' # misc module
-          - '::detours' # misc module
-          - '::memssp' # misc module
-          - '::mflt' # misc module
-          - '::ncroutemon' # misc module
-          - '::ngcsign' # misc module
-          - '::printnightmare' # misc module
-          - '::skeleton' # misc module
-          - '::preshutdown'  # service module
-          - '::mstsc'  # ts module
-          - '::multirdp'  # ts module
-      selection_module_names:
-        CommandLine|contains:
-          - 'rpc::'
-          - 'token::'
-          - 'crypto::'
-          - 'dpapi::'
-          - 'sekurlsa::'
-          - 'kerberos::'
-          - 'lsadump::'
-          - 'privilege::'
-          - 'process::'
-          - 'vault::'
+          - 'sekurlsa::logonpasswords'
+          - 'sekurlsa::pth'
+          - 'sekurlsa::tickets'
+          - 'sekurlsa::wdigest'
+          - 'sekurlsa::minidump'
+          - 'sekurlsa::ekeys'
+          - 'lsadump::sam'
+          - 'lsadump::lsa'
+          - 'lsadump::secrets'
+          - 'lsadump::cache'
+          - 'lsadump::dcsync'
+          - 'lsadump::dcshadow'
+          - 'kerberos::golden'
+          - 'kerberos::ptt'
+          - 'kerberos::list'
+          - 'privilege::debug'
+          - 'token::elevate'
+          - 'dpapi::masterkey'
+          - 'dpapi::cred'
+          - 'crypto::capi'
+          - 'crypto::certificates'
+          - 'vault::cred'
+          - 'vault::list'
+          - 'misc::skeleton'
+          - 'misc::memssp'
+          - 'misc::aadcookie'
+          - 'misc::detours'
+          - 'misc::mflt'
+          - 'misc::ncroutemon'
+          - 'misc::ngcsign'
+          - 'misc::printnightmare'
+          - 'service::preshutdown'
+          - 'ts::mstsc'
+          - 'ts::multirdp'
       condition: 1 of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
@@ -780,7 +794,7 @@ data:
   procdump_lsass.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_sysinternals_procdump_lsass.yml (id 5afee48e-67dd-4e03-a783-f74259dcf998)
-    # 바꾼 것: windash modifier 를 지원하지 않아 - 와 / 변형을 값으로 풀어 적었다. MITRE 첫 태그를 t1003.001 로 올렸다.
+    # 바꾼 것: windash modifier 를 지원하지 않아 - 와 / 변형을 값으로 풀어 적었다. MITRE 첫 태그를 t1003.001 로 올렸다. 종료(kill)를 권고하는 룰이라 오탐을 줄였다: Image 를 procdump 계열로 한정했고(이름을 바꾼 procdump 는 못 잡는다) 대상은 ' ls' 줄임말 없이 lsass 만 본다(bash -c ls -ma 나 git log -mp -- lsfoo 가 걸렸다).
     title: Potential LSASS Process Dump Via Procdump
     id: 5afee48e-67dd-4e03-a783-f74259dcf998
     name: procdump_lsass
@@ -796,6 +810,11 @@ data:
     logsource:
       category: process_creation
     detection:
+      selection_img:
+        Image:
+          - 'procdump.exe'
+          - 'procdump64.exe'
+          - 'procdump64a.exe'
       selection_flags:
         CommandLine|contains:
           - ' -ma '
@@ -805,17 +824,14 @@ data:
           - ' -mp ' # Miniplus dump
           - ' /mp '
       selection_process:
-        CommandLine|contains:
-          - ' ls' # Short for lsass
-          - ' keyiso'
-          - ' samss'
+        CommandLine|contains: 'lsass'
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
   reg_dump_sensitive_hives.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_reg_dumping_sensitive_hives.yml (id fd877b94-9bb5-4191-bb25-d79cbd93c167)
-    # 바꾼 것: OriginalFileName 조건과 유니코드 변형 문자열(ˢave 등)을 뺐다.
+    # 바꾼 것: OriginalFileName 조건과 유니코드 변형 문자열(ˢave 등)을 뺐다. 하이브 이름을 하이브 루트(HKLM\SAM 뒤가 공백이나 따옴표)로 좁혔다. 하위 키(HKLM\SAM\SAM)를 덤프하는 경우는 안 잡는다(HKLM\SYSTEM\CurrentControlSet 같은 정상 내보내기와 구분이 안 된다).
     title: Dumping of Sensitive Hives Via Reg.EXE
     id: fd877b94-9bb5-4191-bb25-d79cbd93c167
     name: reg_dump_sensitive_hives
@@ -837,22 +853,29 @@ data:
         CommandLine|contains:
           - ' save '
           - ' export '
-      selection_cli_hklm:
-        CommandLine|contains:
-          - 'hklm'
-          - 'hkey_local_machine'
+      # 하이브 루트가 토큰 끝에서 끝나야 한다. 뒤가 공백이나 따옴표일 때만 SAM, SYSTEM, SECURITY 하이브 전체다.
+      # \system 만 찾으면 HKLM\SYSTEM\CurrentControlSet\Services\Foo 나 HKLM\SOFTWARE\Samsung 같은 정상 내보내기가 HIGH 가 된다.
       selection_cli_hive:
         CommandLine|contains:
-          - '\system'
-          - '\sam'
-          - '\security'
+          - 'hklm\sam '
+          - 'hklm\sam"'
+          - 'hklm\system '
+          - 'hklm\system"'
+          - 'hklm\security '
+          - 'hklm\security"'
+          - 'hkey_local_machine\sam '
+          - 'hkey_local_machine\sam"'
+          - 'hkey_local_machine\system '
+          - 'hkey_local_machine\system"'
+          - 'hkey_local_machine\security '
+          - 'hkey_local_machine\security"'
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
   schtasks_create_temp.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_schtasks_creation_temp_folder.yml (id 39019a4e-317f-4ce3-ae63-309a8c6b53c5)
-    # 바꾼 것: level 을 high 에서 medium 으로 낮췄다(알림만).
+    # 바꾼 것: level 을 high 에서 medium 으로 낮췄다(알림만). /sc once 가 명령행 끝에 오는 경우를 더했다.
     title: Suspicious Scheduled Task Creation Involving Temp Folder
     id: 39019a4e-317f-4ce3-ae63-309a8c6b53c5
     name: schtasks_create_temp
@@ -867,13 +890,20 @@ data:
     logsource:
       category: process_creation
     detection:
-      selection:
+      selection_img:
         Image|endswith: '\schtasks.exe'
+      selection_cli:
         CommandLine|contains|all:
           - ' /create '
           - ' /sc once '
           - '\Temp\'
-      condition: selection
+      # /sc once 가 명령행 끝에 오면 뒤 공백이 없어 위 조건이 놓친다.
+      selection_cli_end:
+        CommandLine|contains|all:
+          - ' /create '
+          - '\Temp\'
+        CommandLine|endswith: ' /sc once'
+      condition: selection_img and 1 of selection_cli*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: medium
   wbadmin_delete_all_backups.yml: |

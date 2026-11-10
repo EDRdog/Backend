@@ -1,6 +1,6 @@
 # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
 # 원본: rules/macos/process_creation/proc_creation_macos_sysadminctl_add_user_to_admin_group.yml (id 652c098d-dc11-4ba6-8566-c20e89042f2b)
-# 바꾼 것: 없음.
+# 바꾼 것: -admin 이 명령행 끝에 오는 경우를 더했다.
 title: User Added To Admin Group Via Sysadminctl
 id: 652c098d-dc11-4ba6-8566-c20e89042f2b
 name: macos_sysadminctl_add_admin
@@ -16,12 +16,17 @@ tags:
 logsource:
   category: process_creation
 detection:
-  selection:
+  selection_img:
     # Creates and adds new user to admin group
     Image|endswith: '/sysadminctl'
+  selection_cli:
     CommandLine|contains|all:
       - ' -addUser '
       - ' -admin '
-  condition: selection
+  # -admin 이 명령행 끝에 오면 뒤 공백이 없어 위 조건이 놓친다.
+  selection_cli_end:
+    CommandLine|contains: ' -addUser '
+    CommandLine|endswith: ' -admin'
+  condition: selection_img and 1 of selection_cli*
 # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
 level: medium

@@ -1,6 +1,6 @@
 # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
 # 원본: rules/windows/process_creation/proc_creation_win_sysinternals_procdump_lsass.yml (id 5afee48e-67dd-4e03-a783-f74259dcf998)
-# 바꾼 것: windash modifier 를 지원하지 않아 - 와 / 변형을 값으로 풀어 적었다. MITRE 첫 태그를 t1003.001 로 올렸다.
+# 바꾼 것: windash modifier 를 지원하지 않아 - 와 / 변형을 값으로 풀어 적었다. MITRE 첫 태그를 t1003.001 로 올렸다. 종료(kill)를 권고하는 룰이라 오탐을 줄였다: Image 를 procdump 계열로 한정했고(이름을 바꾼 procdump 는 못 잡는다) 대상은 ' ls' 줄임말 없이 lsass 만 본다(bash -c ls -ma 나 git log -mp -- lsfoo 가 걸렸다).
 title: Potential LSASS Process Dump Via Procdump
 id: 5afee48e-67dd-4e03-a783-f74259dcf998
 name: procdump_lsass
@@ -16,6 +16,11 @@ tags:
 logsource:
   category: process_creation
 detection:
+  selection_img:
+    Image:
+      - 'procdump.exe'
+      - 'procdump64.exe'
+      - 'procdump64a.exe'
   selection_flags:
     CommandLine|contains:
       - ' -ma '
@@ -25,10 +30,7 @@ detection:
       - ' -mp ' # Miniplus dump
       - ' /mp '
   selection_process:
-    CommandLine|contains:
-      - ' ls' # Short for lsass
-      - ' keyiso'
-      - ' samss'
+    CommandLine|contains: 'lsass'
   condition: all of selection_*
 # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
 level: high
