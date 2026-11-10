@@ -36,15 +36,15 @@ Go Agent ──HTTPS──▶ collector ──[events]──▶ detector ──[
 | 직접 호출 | 방향 | 이유 |
 |---|---|---|
 | tenant 해석 | collector → api-service | enroll 1회만. `X-Internal-Key` |
-| 대기 명령 조회·결과 중계 | collector → responder | 에이전트 하트비트에 실어 보낼 명령을 가져온다 |
+| 대기 명령 조회·결과 중계 | collector → responder | 에이전트 하트비트에 실어 보낼 명령을 가져온다. `X-Internal-Key` |
 | webhook 주소 조회 | alert → api-service | tenant 별 Slack 주소. `X-API-Key`, 60초 메모리 캐시 |
-| kill 요청·조회 | api-service → responder | 대시보드의 실행 버튼. api-service 가 인증·소유 검증을 맡는 게이트다 |
+| kill 요청·조회 | api-service → responder | 대시보드의 실행 버튼. api-service 가 인증·소유 검증을 맡는 게이트다. `X-Internal-Key` |
 
 지켜야 할 방향:
 
 - **detector 는 아무 저장소도 쓰지 않는다.** 상태는 Kafka Streams state store(RocksDB + changelog)뿐이다. DB 를 붙이면 판정이 외부 가용성에 묶인다.
 - **ClickHouse 쓰기는 archiver 만 한다.** api-service 는 읽기만 한다. 스키마 출처가 둘이 되면 드리프트가 생긴다.
-- **responder 에는 앱 레벨 인증이 없다.** 접근 통제는 api-service 프록시의 세션 인증과 tenant 소유 검증이 전부다. responder 를 외부에 직접 노출하면 안 된다.
+- **responder 의 `/api/responder/**` 는 `X-Internal-Key` 로만 연다**(`InternalKeyFilter` 한 곳). 사용자 쪽 통제는 api-service 프록시의 세션 인증과 tenant 소유 검증이고, 호출자는 collector·api-service 뿐이다. responder 를 외부에 직접 노출하면 안 된다. 근거는 `docs/design-docs/decisions/022-responder-internal-key.md`.
 - **`events` 를 소비하는 쪽은 서로 다른 컨슈머 그룹을 쓴다**(`detector`, `archiver`). 판정과 저장이 서로를 기다리지 않는다.
 - event-schema 는 여섯 서비스가 전부 참조한다. 여기를 고치면 전 모듈을 다시 구워야 한다(CD 의 공통 파일 목록에 들어 있는 이유).
 

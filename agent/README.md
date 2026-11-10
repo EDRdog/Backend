@@ -208,6 +208,8 @@ handshake 가 끝난 뒤에 나가고 연결 이벤트는 커널이 SYN 을 낼 
 EndpointSecurity API 를 직접 부르려면 애플의 entitlement 심사를 통과해야 한다. `/usr/bin/eslogger`
 는 그 권한을 이미 가진 애플 서명 바이너리라, 심사 없이 같은 이벤트를 받을 수 있다. 에이전트는
 `eslogger --format json exec create rename unlink` 를 띄워 stdout 을 줄 단위로 읽는다.
+한 줄이 4MB 를 넘으면 그 줄만 건너뛰고(개수는 로그에 남는다) 계속 읽는다. 읽기가 끝나면 자식을 먼저
+죽이므로 센서가 대기하다 멎는 일은 없다(`docs/design-docs/decisions/023-skip-overlong-eslogger-line.md`).
 
 네트워크만 다르다. **EndpointSecurity API 에는 소켓 연결 이벤트가 없다.** 그래서 `libproc` 로
 프로세스별 열린 TCP 소켓을 주기마다 훑고, 직전 스냅샷에 없던 것만 새 연결로 본다. 첫 스냅샷은
@@ -390,20 +392,27 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 
 바이너리는 GitHub Releases 에서 받는다(`.github/workflows/agent-release.yml` 이 태그를 밀 때 올린다).
 받은 뒤 `.sha256` 과 대조한다. 끊긴 다운로드는 크기만 작고 그대로 설치돼서, 깔린 뒤에 "왜 안 뜨지"
-로 시간을 버리게 된다.
+로 시간을 버리게 된다. `.sha256` 을 못 받으면 설치를 멈춘다. 해시는 바이너리와 같은 릴리스에서 오므로
+릴리스 자체가 바뀐 것까지는 못 막는다(서명은 아직 없다, `docs/exec-plans/tech-debt.md`).
 
-서버에 설정해야 하는 값은 셋이다.
+서버 인증서는 받기만 해서는 고정하지 않는다. 스크립트에 박힌 SHA-256 지문과 같을 때만 `server.pem` 으로
+쓰고, 다르면 멈춘다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이 고정된 서버가 되어 kill 명령까지
+보낼 수 있다(`docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md`).
+
+서버에 설정해야 하는 값은 넷이다.
 
 | 키 | 뜻 |
 |---|---|
 | `INSTALL_PUBLIC_BASE` | 링크 앞부분. 브라우저가 API 를 부르는 주소와 같다 |
 | `INSTALL_AGENT_SERVER` | 에이전트가 붙을 `host:port`. 위와 다를 수 있다(에이전트는 별도 TLS 포트로 붙는다) |
 | `INSTALL_DOWNLOAD_BASE` | 바이너리를 받는 곳. 기본은 GitHub Releases 최신판 |
+| `INSTALL_SERVER_CERT_SHA256` | 위 `INSTALL_AGENT_SERVER` 의 서버 인증서 SHA-256 지문. keytool 출력 그대로(콜론 허용). 비어 있으면 설치 링크가 스크립트를 내주지 않는다. 얻는 법은 ADR 024 |
 
 ### 소스에서 직접 깔기
 
-아래는 개발용 경로다. 릴리스가 없는 브랜치를 시험할 때 쓴다. 서버에서 인증서를 직접 받아 저장하는
-것은 위와 같고, 여러 번 실행해도 안전하다.
+아래는 개발용 경로다. 릴리스가 없는 브랜치를 시험할 때 쓴다. 서버 인증서를 받아 지문과 대조한 뒤에만
+저장하는 것은 위와 같고, 여러 번 실행해도 안전하다. 지문은 설치 링크가 없으니 인자로 받는다. 운영자가
+배포서버의 키스토어에서 읽어 준 값(ADR 024)을 그대로 넣는다.
 
 #### macOS
 
@@ -411,7 +420,7 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 
 ```bash
 sudo ./agent/packaging/bootstrap-macos.sh \
-  --server edr.example.com:30443 --enroll-secret <발급받은 값>
+  --server edr.example.com:30443 --server-cert-sha256 <지문> --enroll-secret <발급받은 값>
 ```
 
 시크릿을 아직 안 받았으면 대신 받아 오게 할 수 있다. 비밀번호는 인자로 받지 않고 물어본다.
@@ -419,7 +428,7 @@ sudo ./agent/packaging/bootstrap-macos.sh \
 
 ```bash
 sudo ./agent/packaging/bootstrap-macos.sh \
-  --server edr.example.com:30443 --email me@example.com --api-key <프론트 키>
+  --server edr.example.com:30443 --server-cert-sha256 <지문> --email me@example.com --api-key <프론트 키>
 ```
 
 `--api-key` 가 필요한 이유는 `/api/tenant` 가 `X-API-Key` 예외 경로가 아니라서다
@@ -445,7 +454,8 @@ Enter 를 누르면 이어서 재시작하고 등록됐는지까지 확인한다
 ```bash
 cd agent
 go build -o packaging/edrdog-agent ./cmd/edrdog-agent
-sudo ./packaging/install-macos.sh --server edr.example.com:30443 --enroll-secret <발급받은 값>
+sudo ./packaging/install-macos.sh --server edr.example.com:30443 --enroll-secret <발급받은 값> \
+  --server-cert-sha256 <지문>
 ```
 
 바이너리를 `/usr/local/bin/edrdog-agent` 에 놓고, 설정을 `/etc/edrdog/config.json` 에 쓰고,
@@ -466,7 +476,7 @@ tail -f /var/log/edrdog/agent.log              # 로그
 관리자 권한 PowerShell 에서 실행한다.
 
 ```powershell
-.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <발급받은 값>
+.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <발급받은 값> -ServerCertSha256 <지문>
 ```
 
 `C:\Program Files\EDRdog\edrdog-agent.exe` 에 놓고 설정을 `C:\ProgramData\EDRdog\config.json` 에
@@ -939,7 +949,7 @@ powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
 (`service_windows.go`), 그 경로도 미검증이다.
 
 ```powershell
-.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <값>
+.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <값> -ServerCertSha256 <지문>
 Get-Service edrdog-agent          # Running 이어야 한다
 
 Restart-Computer

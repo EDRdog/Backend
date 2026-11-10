@@ -4,6 +4,7 @@ package sensor
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,8 +24,8 @@ const eslDefaultPath = "/usr/bin/eslogger"
 var eslEventTypes = []string{"exec", "create", "rename", "unlink"}
 
 const (
-	// eslMaxLineBytes 는 한 줄의 상한이다.
-	// Scanner 기본값 64KB 로는 수백 KB 짜리 exec 줄이 잘려 파싱이 실패한다.
+	// eslMaxLineBytes 는 파싱할 한 줄의 상한이다. 넘는 줄은 건너뛴다.
+	// 64KB 로는 수백 KB 짜리 exec 줄이 잘려 파싱이 실패한다.
 	eslMaxLineBytes = 4 << 20
 
 	// 재기동 간격. 상한을 두지 않으면 eslogger 가 계속 죽을 때 간격이 무한정 늘어난다.
@@ -141,6 +142,8 @@ func (s *ESLoggerSensor) runOnce(ctx context.Context, binPath string, watch []st
 	}()
 
 	lines, readErr := s.pump(ctx, stdout, watch, out)
+	// pump 이 어떤 이유로 끝났든 자식을 죽인다. 살아 있으면 stderr 가 안 끝나 아래에서 영원히 막힌다.
+	_ = cmd.Process.Kill()
 	<-drained
 	waitErr := cmd.Wait()
 
@@ -155,24 +158,57 @@ func (s *ESLoggerSensor) runOnce(ctx context.Context, binPath string, watch []st
 }
 
 // pump 은 stdout 을 줄 단위로 읽어 이벤트로 바꿔 내보낸다.
+// 상한을 넘는 줄은 건너뛰고 계속 읽는다. 여기서 멈추면 eslogger 가 stdout 이 막혀 같이 선다.
 func (s *ESLoggerSensor) pump(ctx context.Context, stdout io.Reader, watch []string, out chan<- event.Event) (int, error) {
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), eslMaxLineBytes)
+	r := bufio.NewReaderSize(stdout, 64*1024)
+	var buf []byte
 
-	lines := 0
-	for scanner.Scan() {
-		lines++
-		e, ok := MapLine(s.Factory, scanner.Bytes(), watch, s.Hasher)
-		if !ok {
-			continue
+	lines, skipped := 0, 0
+	for {
+		line, tooLong, err := readLine(r, buf)
+		buf = line[:0]
+
+		if tooLong {
+			lines++
+			skipped++
+			s.logger().Warn("eslogger 줄이 상한을 넘어 건너뛴다", "limitBytes", eslMaxLineBytes, "skipped", skipped)
+		} else if len(line) > 0 {
+			lines++
+			if e, ok := MapLine(s.Factory, line, watch, s.Hasher); ok {
+				select {
+				case out <- e:
+				case <-ctx.Done():
+					return lines, ctx.Err()
+				}
+			}
 		}
-		select {
-		case out <- e:
-		case <-ctx.Done():
-			return lines, ctx.Err()
+
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return lines, err
 		}
 	}
-	return lines, scanner.Err()
+}
+
+// readLine 은 한 줄을 읽어 개행을 뗀 채로 돌려준다. buf 는 재사용할 버퍼다.
+// 상한을 넘는 줄은 끝까지 읽어 버리고 tooLong 을 true 로 돌려준다.
+func readLine(r *bufio.Reader, buf []byte) (line []byte, tooLong bool, err error) {
+	buf = buf[:0]
+	for {
+		var chunk []byte
+		chunk, err = r.ReadSlice('\n')
+		if !tooLong {
+			buf = append(buf, chunk...)
+			if len(buf) > eslMaxLineBytes {
+				tooLong, buf = true, buf[:0]
+			}
+		}
+		if err != bufio.ErrBufferFull {
+			return bytes.TrimRight(buf, "\r\n"), tooLong, err
+		}
+	}
 }
 
 // reportHashHealth 는 해시 집계를 주기마다 로그로 남긴다.

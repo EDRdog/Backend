@@ -5,7 +5,7 @@
 .DESCRIPTION
     하는 일:
       1. 에이전트 바이너리를 C:\Program Files\EDRdog 에 놓는다
-      2. 수집 서버에서 서버 인증서를 직접 받아 저장한다(관리자가 따로 전달할 필요가 없다)
+      2. 수집 서버에서 서버 인증서를 받아, 운영자에게 받은 SHA-256 지문과 같을 때만 저장한다
       3. 설정 파일을 만든다(enroll secret 포함, 관리자만 읽게 ACL 을 건다)
       4. Windows 서비스로 등록해 부팅 시 LocalSystem 으로 기동시킨다
 
@@ -20,15 +20,21 @@
 .PARAMETER EnrollSecret
     조직의 enroll secret. 대시보드에서 발급받는다.
 
+.PARAMETER ServerCertSha256
+    서버 인증서의 SHA-256 지문. 운영자가 배포서버의 키스토어에서 읽어 준다
+    (docs/design-docs/decisions/024). keytool 출력(AB:CD:...) 그대로 넣어도 된다.
+    받은 인증서가 이 값과 다르면 설치를 멈춘다.
+
 .PARAMETER Binary
     에이전트 바이너리 경로. 생략하면 이 스크립트 옆의 edrdog-agent.exe 를 쓴다.
 
 .EXAMPLE
-    .\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret abc123
+    .\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret abc123 -ServerCertSha256 AB:CD:...
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Server,
     [Parameter(Mandatory = $true)][string]$EnrollSecret,
+    [Parameter(Mandatory = $true)][string]$ServerCertSha256,
     [string]$Binary
 )
 
@@ -53,6 +59,12 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     Fail '관리자 권한 PowerShell 에서 실행해야 한다'
 }
 
+# 콜론을 빼고 대문자로 맞춘다. keytool 출력을 그대로 붙여 넣어도 되게 한다.
+$ServerCertSha256 = ($ServerCertSha256 -replace ':', '').ToUpperInvariant()
+if ($ServerCertSha256 -notmatch '^[A-F0-9]{64}$') {
+    Fail '-ServerCertSha256 은 SHA-256 지문(16진수 64자, 콜론 허용)이어야 한다'
+}
+
 if (-not $Binary) {
     $Binary = Join-Path $PSScriptRoot 'edrdog-agent.exe'
 }
@@ -64,7 +76,7 @@ Write-Host '[1/4] 바이너리 설치'
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -Force $Binary $BinPath
 
-Write-Host "[2/4] 서버 인증서 수신 ($Server)"
+Write-Host "[2/4] 서버 인증서 수신과 지문 대조 ($Server)"
 New-Item -ItemType Directory -Force -Path $ConfDir | Out-Null
 $parts = $Server.Split(':')
 $hostName = $parts[0]
@@ -72,10 +84,18 @@ $port = if ($parts.Length -gt 1) { [int]$parts[1] } else { 443 }
 
 $tcp = $null
 $ssl = $null
+# 검증 콜백이 본 지문. 대조에 실패했을 때 무엇을 받았는지 보여 주려고 남긴다.
+$seen = @{}
 try {
     $tcp = [System.Net.Sockets.TcpClient]::new($hostName, $port)
-    # 여기서는 인증서를 받아오기만 한다. 실제 검증은 에이전트가 이 파일로 고정해서 한다.
-    $callback = [System.Net.Security.RemoteCertificateValidationCallback] { param($s, $c, $ch, $e) $true }
+    # 에이전트가 이 인증서로 서버를 고정한다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이
+    # 고정된 서버가 되어 kill 명령까지 보낼 수 있다. 운영자에게 받은 지문과 같을 때만 받아들인다.
+    $callback = [System.Net.Security.RemoteCertificateValidationCallback] {
+        param($s, $c, $ch, $e)
+        $hash = [System.Security.Cryptography.SHA256]::Create().ComputeHash($c.GetRawCertData())
+        $seen.Fp = [BitConverter]::ToString($hash) -replace '-', ''
+        $seen.Fp -eq $ServerCertSha256
+    }
     $ssl = [System.Net.Security.SslStream]::new($tcp.GetStream(), $false, $callback)
     $ssl.AuthenticateAsClient($hostName)
     $der = $ssl.RemoteCertificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
@@ -83,6 +103,9 @@ try {
     "-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----" |
         Set-Content -Path $CertPath -Encoding ascii
 } catch {
+    if ($seen.Fp -and $seen.Fp -ne $ServerCertSha256) {
+        Fail "서버 인증서 지문이 다르다 (기대 $ServerCertSha256, 실제 $($seen.Fp)). 중간에서 가로챈 연결일 수 있어 설치를 멈춘다"
+    }
     Fail "서버 인증서를 받지 못했다: $($_.Exception.Message)"
 } finally {
     if ($ssl) { $ssl.Dispose() }

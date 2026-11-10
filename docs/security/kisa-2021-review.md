@@ -23,10 +23,10 @@
 | H2 | 1-15 | 이벤트의 `host` 를 에이전트가 보낸 값 그대로 쓴다. collector 는 tenantId 만 덮어쓴다. 인증된 노드가 다른 기기 이름으로 이벤트를 넣어 탐지를 흐리거나 가짜 알림을 만든다 | `collector-service/.../agent/EventTagger.java` | 수정 (같은 계획) |
 | H3 | 1-15 | 종료 대상(target)을 알림이 아니라 요청 본문에서 받는다. 로그인한 사용자가 아무 프로세스 이름이나 넣을 수 있다. `docs/agent-protocol.md` 의 "detector 가 알림에 실어 보낸 값을 그대로 쓴다" 와 다르다 | `AlertController.java` `respond` | 수정 (같은 계획) |
 | H4 | 2-1, 6-2 | 운영 `DEMO_SEED=true`. 인증 없는 `/api/demo/**` 와 공개 계정 `test@edrdog.local`/`1234` 가 살아 있다 | `k8s/api-service.yaml`, `ApiKeyPolicy.java` | 감수. 데모 계정을 일부러 공개해 둔 것이다. H1·H3 를 고치면 이 계정으로 남의 기기를 건드리는 경로가 사라진다 |
-| H5 | 2-1 | responder 의 `/api/responder/kill`, `/commands` 와 detector 의 `/api/events` 에 인증이 없다. Kafka 도 무인증 PLAINTEXT. 클러스터 안 파드 하나면 임의 kill 을 넣는다 | `responder-service/.../api/KillController.java`, `CommandController.java`, `detector-service/.../api/IngestController.java` | 미정 |
-| H6 | 1-15 | 압축 안 한 본문에는 8MB 상한이 없다. collector 힙을 터뜨릴 수 있다. `docs/agent-protocol.md` 의 413 설명과 다르다 | `collector-service/.../agent/web/GzipRequestFilter.java` | 미정 |
-| H7 | 2-11, 2-15 | 설치 스크립트가 서버 인증서를 검증 없이 받아 고정한다(Windows 는 검증 콜백이 항상 참). `.sha256` 이 없으면 경고만 하고 설치한다 | `api-service/src/main/resources/install/`, `agent/packaging/` | 미정 |
-| H8 | 4-3 | eslogger 한 줄이 4MB 를 넘으면 `pump` 이 끝난 뒤 `<-drained` 에서 영원히 막힌다. 로그도 재기동도 없고 하트비트는 계속 나간다 | `agent/internal/sensor/eslogger_darwin.go` | 미정. 6MB 줄이 실제로 나오는지는 실행해 보지 않았다 |
+| H5 | 2-1 | responder 의 `/api/responder/kill`, `/commands` 와 detector 의 `/api/events` 에 인증이 없다. Kafka 도 무인증 PLAINTEXT. 클러스터 안 파드 하나면 임의 kill 을 넣는다 | `responder-service/.../api/KillController.java`, `CommandController.java`, `detector-service/.../api/IngestController.java` | 부분 수정. responder 는 `X-Internal-Key` 로 막았다(ADR 022). detector `/api/events`, Kafka 인증, NetworkPolicy 는 tech-debt |
+| H6 | 1-15 | 압축 안 한 본문에는 8MB 상한이 없다. collector 힙을 터뜨릴 수 있다. `docs/agent-protocol.md` 의 413 설명과 다르다 | `collector-service/.../agent/web/GzipRequestFilter.java` | 수정(ADR 021). 깨진 gzip 400 도 함께 |
+| H7 | 2-11, 2-15 | 설치 스크립트가 서버 인증서를 검증 없이 받아 고정한다(Windows 는 검증 콜백이 항상 참). `.sha256` 이 없으면 경고만 하고 설치한다 | `api-service/src/main/resources/install/`, `agent/packaging/` | 수정(ADR 024). 설정된 지문만 고정, `.sha256` 없으면 중단. 바이너리 서명과 기존 설치 기기의 TOFU 인증서는 tech-debt |
+| H8 | 4-3 | eslogger 한 줄이 4MB 를 넘으면 `pump` 이 끝난 뒤 `<-drained` 에서 영원히 막힌다. 로그도 재기동도 없고 하트비트는 계속 나간다 | `agent/internal/sensor/eslogger_darwin.go` | 수정(ADR 023). 긴 줄은 건너뛰고 자식을 먼저 죽인다. 실제 eslogger 로는 재현하지 않았다 |
 
 ## 중간
 

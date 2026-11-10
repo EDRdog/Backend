@@ -1,5 +1,6 @@
 package com.edrdog.apiservice.install;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,7 +18,24 @@ public final class InstallScript {
     /** 값에 허용하는 문자. 공백과 셸 메타문자는 전부 빠져 있다. */
     private static final Pattern SAFE_VALUE = Pattern.compile("[A-Za-z0-9._:/@=+~?&%-]+");
 
+    /** SHA-256 지문. 콜론 없이 64자이거나 keytool 출력처럼 바이트마다 콜론이 있다. */
+    private static final Pattern SHA256_FINGERPRINT =
+            Pattern.compile("[A-Fa-f0-9]{64}|[A-Fa-f0-9]{2}(:[A-Fa-f0-9]{2}){31}");
+
     private InstallScript() {
+    }
+
+    /**
+     * 설정된 서버 인증서 지문을 스크립트가 비교하는 꼴(콜론 없는 대문자 64자)로 바꾼다.
+     *
+     * @throws IllegalArgumentException SHA-256 지문 모양이 아닌 경우
+     */
+    public static String normalizeFingerprint(String value) {
+        String v = value.strip();
+        if (!SHA256_FINGERPRINT.matcher(v).matches()) {
+            throw new IllegalArgumentException("서버 인증서 지문이 SHA-256 모양(16진수 64자, 콜론 허용)이 아니다");
+        }
+        return v.replace(":", "").toUpperCase(Locale.ROOT);
     }
 
     /**

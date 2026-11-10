@@ -211,6 +211,37 @@ class AgentIngestIntegrationTest {
         verify(producer, never()).publish(any(Event.class));
     }
 
+    /** 압축 안 한 본문에도 같은 상한이 걸린다. 없으면 JsonNode 파싱이 힙을 터뜨린다(KISA H6). */
+    @Test
+    void 압축_안_한_본문이_상한을_넘으면_413_이고_발행하지_않는다() throws Exception {
+        String nodeKey = enroll("mac-010", "darwin");
+        String big = "{\"events\":[{\"host\":\"" + "a".repeat(9 * 1024 * 1024)
+                + "\",\"type\":\"process\",\"ts\":1785341400000}]}";
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(big))
+                .andExpect(status().isPayloadTooLarge());
+
+        verify(producer, never()).publish(any(Event.class));
+    }
+
+    /** 깨진 gzip 은 클라이언트 잘못이라 500 이 아니라 400 이다. */
+    @Test
+    void 깨진_gzip_본문은_400_이다() throws Exception {
+        String nodeKey = enroll("mac-011", "darwin");
+
+        mvc.perform(post("/api/agent/events")
+                        .header("X-Node-Key", nodeKey)
+                        .header("Content-Encoding", "gzip")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("gzip 아님".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest());
+
+        verify(producer, never()).publish(any(Event.class));
+    }
+
     /**
      * 압축 전/후를 서버가 둘 다 잰다. 에이전트에서 재면 운영으로 올릴 경로가 없다.
      * 헤더 없는 요청도 같은 자리에 남아야 압축 전 기준선이 생긴다.

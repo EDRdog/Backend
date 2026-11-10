@@ -19,7 +19,8 @@ class InstallTemplatesTest {
     private static final Map<String, String> VALUES = Map.of(
             "SERVER", "edr.example.com:8443",
             "ENROLL_SECRET", "Zm9vYmFy-_09",
-            "DOWNLOAD_BASE", "https://github.com/org/repo/releases/latest/download");
+            "DOWNLOAD_BASE", "https://github.com/org/repo/releases/latest/download",
+            "SERVER_CERT_FINGERPRINT", "C8A43B6EDCA088F8CC65425F7B1069DD762B38C28D843C8D11D1E9AD4F0AB24E");
 
     private final InstallScripts scripts = new InstallScripts("https://edr.example.com");
 
@@ -64,6 +65,34 @@ class InstallTemplatesTest {
         // 로 나온다. 릴리스 파일이 깨진 것과 바이너리가 바뀐 것은 대응이 전혀 다르다.
         assertTrue(scripts.macos().contains("[A-Fa-f0-9]{64}"), "macOS 원본이 해시 모양을 안 본다");
         assertTrue(scripts.windows().contains("[A-Fa-f0-9]{64}"), "windows 원본이 해시 모양을 안 본다");
+    }
+
+    @Test
+    void templatesPinOnlyTheConfiguredFingerprint() {
+        // 받은 인증서를 그대로 고정하면(TOFU) 설치 순간 끼어든 쪽이 고정된 서버가 되어 kill 명령까지 보낼 수 있다(KISA H7).
+        String mac = scripts.macos();
+        String win = scripts.windows();
+
+        assertTrue(mac.contains("{{SERVER_CERT_FINGERPRINT}}"), "macOS 원본이 지문을 안 받는다");
+        assertTrue(win.contains("{{SERVER_CERT_FINGERPRINT}}"), "windows 원본이 지문을 안 받는다");
+        // macOS: s_client 출력을 고정 파일에 바로 쓰던 것이 TOFU 였다. 대조한 뒤에만 쓴다.
+        assertFalse(mac.contains("> \"$CERT_PATH\""), "macOS 원본이 받은 인증서를 대조 없이 고정한다");
+        assertTrue(mac.contains("[[ \"$got_fp\" == \"$SERVER_CERT_SHA256\" ]] || fail"), "macOS 원본이 지문을 대조하지 않는다");
+        // windows: 검증 콜백이 늘 참이면 아무 인증서나 받는다.
+        assertFalse(win.matches("(?s).*param\\([^)]*\\)\\s*\\$true\\s*}.*"), "windows 원본의 검증 콜백이 늘 참이다");
+        assertTrue(win.contains("-eq $ServerCertSha256"), "windows 원본이 지문을 대조하지 않는다");
+    }
+
+    @Test
+    void missingSha256AbortsInstall() {
+        // 해시 파일이 없을 때 경고만 하고 넘어가면, 해시 파일을 빼는 것만으로 검사를 건너뛸 수 있다.
+        String mac = scripts.macos();
+        String win = scripts.windows();
+
+        assertTrue(mac.contains("-o \"$TMP/want\" || fail"), "macOS 원본이 해시 파일이 없어도 이어 간다");
+        assertFalse(mac.contains("경고:"), "macOS 원본에 경고하고 넘어가는 길이 남았다");
+        assertFalse(win.contains("Write-Warning"), "windows 원본에 경고하고 넘어가는 길이 남았다");
+        assertFalse(win.contains("if ($want)"), "windows 원본이 해시가 있을 때만 대조한다");
     }
 
     private static void assertNoPlaceholderLeft(String out) {

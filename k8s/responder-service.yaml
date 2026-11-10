@@ -22,6 +22,7 @@ spec:
           ports:
             - containerPort: 8082
           # Infisical 이 동기화한 edrdog-secrets. api/alert/detector 등 다른 서비스와 같은 패턴이고, 아래 env 에 같은 이름이 있으면 그쪽이 이긴다.
+          # INTERNAL_API_KEY 도 여기서 온다. /api/responder/** 가 X-Internal-Key 로 이 값을 요구하므로, collector/api-service 와 같은 값이어야 한다.
           envFrom:
             - secretRef:
                 name: edrdog-secrets
