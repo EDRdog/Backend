@@ -1,0 +1,14 @@
+    ┌─────────────────utc─┬─rule_id──────────────────────────────┬─severity─┬─action─┬─target─────────────────────────────────────────────────────────────────────────────────────┐
+ 1. │ 2026-11-10 12:26:30 │ MACOS_TMUTIL_DELETE_BACKUP           │ MEDIUM   │ notify │ /usr/bin/sed -n s/^# id: //p /Users/dhkim/1Project/EDRdog/Backend-dettest/scripts/detectio │
+ 2. │ 2026-11-10 12:26:34 │ DOWNLOAD_AND_EXECUTE                 │ CRITICAL │ kill   │ /private/tmp/edrdogtest20261110122630D01/edrdogtest20261110122630D01 300                   │
+ 3. │ 2026-11-10 12:27:21 │ MACOS_TMUTIL_DELETE_BACKUP           │ MEDIUM   │ notify │ /bin/mv D08-tmutil-delete.sh D08.sh                                                        │
+ 4. │ 2026-11-10 12:27:49 │ DOWNLOAD_AND_EXECUTE                 │ CRITICAL │ kill   │ /private/tmp/edrdogtest20261110122745D01/edrdogtest20261110122745D01 300                   │
+ 5. │ 2026-11-10 12:33:29 │ SCRIPT_FROM_TEMP_PATH                │ MEDIUM   │ notify │ /bin/bash /tmp/edrdogtest20261110122745D02/edrdogtest20261110122745D02.sh                  │
+ 6. │ 2026-11-10 12:46:37 │ WEAK_TLS_HANDSHAKE                   │ MEDIUM   │ notify │ openssl                                                                                    │
+ 7. │ 2026-11-10 12:54:07 │ MACOS_KEYCHAIN_DUMP                  │ MEDIUM   │ notify │ /usr/bin/security find-certificate -a -p -c edrtest-edrdogtest20261110122745D05            │
+ 8. │ 2026-11-10 12:59:40 │ MACOS_XATTR_REMOVE_QUARANTINE        │ MEDIUM   │ notify │ /usr/bin/xattr -d com.apple.quarantine /tmp/edrdogtest20261110122745D06/edrdogtest20261110 │
+ 9. │ 2026-11-10 13:05:17 │ MACOS_PLISTBUDDY_LAUNCHD_PERSISTENCE │ MEDIUM   │ notify │ /usr/libexec/PlistBuddy -c Add :RunAtLoad bool true /tmp/edrdogtest20261110122745D07/edrdo │
+10. │ 2026-11-10 13:10:50 │ MACOS_TMUTIL_DELETE_BACKUP           │ MEDIUM   │ notify │ /usr/bin/tmutil delete /tmp/edrtest-edrdogtest20261110122745D08-nonexistent                │
+11. │ 2026-11-10 13:16:27 │ DNS_TOR_GATEWAY                      │ MEDIUM   │ notify │                                                                                            │
+12. │ 2026-11-10 13:23:57 │ DNS_MEGA_USERSTORAGE                 │ MEDIUM   │ notify │                                                                                            │
+    └─────────────────────┴──────────────────────────────────────┴──────────┴────────┴────────────────────────────────────────────────────────────────────────────────────────────┘
