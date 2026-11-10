@@ -19,6 +19,17 @@ class AuthValidationTest {
     }
 
     @Test
+    void emailMustBeASingleAsciiAddressOfBoundedLength() {
+        assertTrue(AuthValidation.validEmail("first.last+tag@sub.edrdog.com"));
+        assertFalse(AuthValidation.validEmail("a b@edrdog.com"));
+        assertFalse(AuthValidation.validEmail("<x>@edrdog.com"));
+        assertFalse(AuthValidation.validEmail("a'--@edrdog.com"));
+        assertFalse(AuthValidation.validEmail("a@b@edrdog.com"));
+        assertFalse(AuthValidation.validEmail("a@edrdog.com\n"));
+        assertFalse(AuthValidation.validEmail("x".repeat(250) + "@edrdog.com"));
+    }
+
+    @Test
     void 비밀번호는_8자_이상이어야_유효() {
         assertTrue(AuthValidation.validPassword("12345678"));
         assertFalse(AuthValidation.validPassword("1234567"));

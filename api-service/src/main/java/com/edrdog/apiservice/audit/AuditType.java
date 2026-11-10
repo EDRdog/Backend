@@ -19,6 +19,11 @@ public final class AuditType {
     public static final String KILL_REQUEST = "kill_request";
     public static final String AGENT_ENROLL = "agent_enroll";
 
+    // 접근통제 묶음이 남기는 사건(관리 IP 목록 변경, 권한 없는 요청, 계정 생성)
+    public static final String ADMIN_IP_CHANGE = "admin_ip_change";
+    public static final String ACCESS_DENIED = "access_denied";
+    public static final String ACCOUNT_CREATE = "account_create";
+
     // 다른 묶음이 쓸 유형(상수만 둔다. 남기는 코드는 그 묶음이 넣는다)
     public static final String PASSWORD_CHANGE = "password_change";
     public static final String AUTH_LOCKOUT = "auth_lockout";

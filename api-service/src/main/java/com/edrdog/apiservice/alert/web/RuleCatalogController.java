@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.alert.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.alert.ThreatCatalog;
 import com.edrdog.apiservice.auth.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/alerts")
 @Tag(name = "alerts", description = "알림 조회 및 트리아지 (ClickHouse 판정기록 + MySQL status 오버레이, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class RuleCatalogController {
 
     private static final String BEARER_PREFIX = "Bearer ";

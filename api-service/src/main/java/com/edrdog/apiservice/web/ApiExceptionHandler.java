@@ -3,6 +3,7 @@ package com.edrdog.apiservice.web;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -36,6 +37,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<Map<String, String>> handleBadParameter(Exception e) {
         return body(HttpStatus.BAD_REQUEST, parameterMessage(e));
+    }
+
+    /** 깨진 JSON 이나 없는 본문. 파서가 낸 문장(내부 클래스 이름, 위치)을 그대로 내보내지 않고 고정 문구로 준다. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleUnreadableBody(HttpMessageNotReadableException e) {
+        return body(HttpStatus.BAD_REQUEST, "요청 본문 형식이 올바르지 않습니다");
     }
 
     private static String parameterMessage(Exception e) {

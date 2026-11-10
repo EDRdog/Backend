@@ -1,5 +1,6 @@
 package com.edrdog.apiservice.notify;
 
+import com.edrdog.apiservice.access.InputRules;
 import com.edrdog.apiservice.auth.AppUser;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.UserRepository;
@@ -73,6 +74,7 @@ public class UserNotifyService {
         if (host == null || host.isBlank()) {
             throw AuthException.invalidInput("host 는 비어 있을 수 없습니다");
         }
+        InputRules.requireText("host", host, 255);   // host_owners.host 칸. 넘기면 저장 오류가 409 로 둔갑한다
         Optional<HostOwner> existing = hostOwners.findByTenantIdAndHost(tenantId, host);
         if (existing.isPresent()) {
             if (!existing.get().getUserId().equals(userId)) {

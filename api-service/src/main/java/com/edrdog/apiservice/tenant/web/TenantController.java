@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.tenant.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.audit.AuditActor;
 import com.edrdog.apiservice.audit.AuditEntry;
 import com.edrdog.apiservice.audit.AuditResult;
@@ -45,6 +47,7 @@ public class TenantController {
     }
 
     @Operation(summary = "webhook 등록", description = "로그인 유저(Bearer)의 tenant 에 Slack webhook URL 을 저장한다.")
+    @RequiresRole(Role.ADMIN)
     @PutMapping("/api/tenant/webhook")
     public WebhookResponse setWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -55,6 +58,7 @@ public class TenantController {
     }
 
     @Operation(summary = "내 webhook 조회", description = "로그인 유저(Bearer)의 tenant 에 저장된 webhook URL 을 조회한다.")
+    @RequiresRole(Role.ADMIN)
     @GetMapping("/api/tenant/webhook")
     public WebhookResponse getWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -64,6 +68,7 @@ public class TenantController {
     }
 
     @Operation(summary = "enroll secret 발급/회전", description = "로그인 유저(Bearer)의 tenant 에 enroll secret 을 새로 발급한다. 엔드포인트 에이전트 설정의 enroll_secret 에 넣는다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/tenant/enroll-secret")
     public EnrollSecretResponse rotateEnrollSecret(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -73,6 +78,7 @@ public class TenantController {
     }
 
     @Operation(summary = "내 enroll secret 조회", description = "로그인 유저(Bearer)의 tenant 에 발급된 enroll secret 을 조회한다. 미발급이면 null.")
+    @RequiresRole(Role.ADMIN)
     @GetMapping("/api/tenant/enroll-secret")
     public EnrollSecretResponse getEnrollSecret(
             @RequestHeader(name = "Authorization", required = false) String authorization) {

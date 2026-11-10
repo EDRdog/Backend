@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.audit.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.audit.AuditFilter;
 import com.edrdog.apiservice.audit.AuditPage;
 import com.edrdog.apiservice.audit.AuditResult;
@@ -11,14 +13,12 @@ import com.edrdog.apiservice.query.QueryGuards;
 import com.edrdog.apiservice.web.PageHeaders;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -30,10 +30,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/audit")
 @Tag(name = "audit", description = "감사기록 조회 (admin 전용, 읽기 전용)")
+@RequiresRole(Role.ADMIN)
 public class AuditController {
 
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String ADMIN = "admin";
     static final int DEFAULT_LIMIT = 100;
     static final int MAX_LIMIT = 1000;
 
@@ -66,9 +66,6 @@ public class AuditController {
             @RequestParam(required = false) Integer offset,
             @RequestParam(required = false, defaultValue = "false") boolean withTotal) {
         Principal principal = auth.resolve(bearerToken(authorization));
-        if (!ADMIN.equals(principal.role())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "관리자만 감사기록을 조회할 수 있습니다");
-        }
         if (!order.equals("asc") && !order.equals("desc")) {
             throw AuthException.invalidInput("order 는 asc 또는 desc 여야 합니다: " + order);
         }

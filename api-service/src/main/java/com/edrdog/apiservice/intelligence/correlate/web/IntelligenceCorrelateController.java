@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.intelligence.correlate.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.intelligence.correlate.CorrelateResponse;
@@ -23,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/intelligence")
 @Tag(name = "intelligence", description = "도메인·IP 관계 분석과 실시간 DNS 조회")
+@RequiresRole(Role.VIEWER)
 public class IntelligenceCorrelateController {
 
     private static final String BEARER_PREFIX = "Bearer ";
