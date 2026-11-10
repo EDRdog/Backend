@@ -123,6 +123,7 @@
 | SEC-97 | 조직 webhook 삭제는 admin 만 쓴다(viewer 403, 로그인 없으면 401). 다른 조직의 webhook 은 그대로다 | `WebhookClearIntegrationTest.viewerAndUnauthenticatedCallersCannotClearTheOrganizationWebhook`, `WebhookClearIntegrationTest.clearingOneOrganizationLeavesOthersAlone`, `RoleAccessIntegrationTest.viewerIsForbiddenFromEveryResponseSettingAuditAndAccountApi` | `docs/security/kisa-edr-performance-criteria.md` BF-20.2, `docs/design-docs/decisions/034-agent-check-notify-and-kisa-eval-fixes.md` | 자동 |
 | SEC-98 | webhook 삭제는 감사기록 `webhook_change` 로 남는다(행위자, 대상 `tenant` 또는 `me`, 상세 `remove`, 접속 IP). webhook URL 은 기록에 없다 | `WebhookClearIntegrationTest.adminClearsTheOrganizationWebhookAndItIsAudited`, `WebhookClearIntegrationTest.adminClearsTheirPersonalWebhookAndViewerCannot` | `docs/security/kisa-edr-performance-criteria.md` BF-13.1, `docs/design-docs/decisions/034-agent-check-notify-and-kisa-eval-fixes.md` | 자동 |
 | SEC-99 | `DELETE /api/me/webhook` 이 로그인한 유저의 개인 webhook 을 비운다(204, admin 만, viewer 403) | `WebhookClearIntegrationTest.adminClearsTheirPersonalWebhookAndViewerCannot` | `docs/security/kisa-edr-performance-criteria.md` BF-20.2, `docs/design-docs/decisions/034-agent-check-notify-and-kisa-eval-fixes.md` | 자동 |
+| SEC-100 | 데모 계정(`demo_account`)은 관리 IP 등록·삭제, 보안정책 변경, 계정 생성을 하면 403 과 `{"error"}` 본문을 받고 상태가 바뀌지 않는다. 조회는 된다. 데모가 아닌 admin 은 그대로 된다 | `DemoGuardIntegrationTest.demoAccountCannotChangeAdminIpsPolicyOrUsers`, `DemoGuardIntegrationTest.regularAdminStillChangesThem` | `docs/design-docs/decisions/035-demo-account-write-guard.md` | 자동 |
 
 ## 수동 확인
 

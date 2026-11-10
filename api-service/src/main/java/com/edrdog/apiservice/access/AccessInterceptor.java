@@ -61,6 +61,9 @@ public class AccessInterceptor implements HandlerInterceptor {
                     "required=" + required.value().value() + " " + what, ip));
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다");
         }
+        if (required.denyDemo() && auth.isDemoAccount(who.userId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "공개 데모 계정으로는 바꿀 수 없습니다");
+        }
         request.setAttribute(PRINCIPAL, who);
         return true;
     }

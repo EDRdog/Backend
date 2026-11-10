@@ -43,7 +43,7 @@ public class UserAccountController {
     @Operation(summary = "viewer 계정 생성",
             description = "로그인한 admin 의 조직에 viewer 계정을 만든다(201). 이메일 형식이나 비밀번호 규칙이 틀리면 400, "
                     + "이미 가입된 이메일이면 409. 본문에 role 을 실어도 무시하고 viewer 로 만든다.")
-    @RequiresRole(Role.ADMIN)
+    @RequiresRole(value = Role.ADMIN, denyDemo = true)
     @PostMapping("/api/tenant/users")
     public ResponseEntity<UserResponse> createViewer(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal admin,
                                                      @RequestBody CreateUserRequest req, HttpServletRequest http) {
