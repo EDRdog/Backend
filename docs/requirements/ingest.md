@@ -1,6 +1,6 @@
 # 수집과 등록 (PRD: `docs/product-specs/service.md` F1, F2)
 
-에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `019`.
+에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `021`, `023`, `024`.
 
 ## 발행 계약
 

@@ -406,7 +406,7 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 | `INSTALL_PUBLIC_BASE` | 링크 앞부분. 브라우저가 API 를 부르는 주소와 같다 |
 | `INSTALL_AGENT_SERVER` | 에이전트가 붙을 `host:port`. 위와 다를 수 있다(에이전트는 별도 TLS 포트로 붙는다) |
 | `INSTALL_DOWNLOAD_BASE` | 바이너리를 받는 곳. 기본은 GitHub Releases 최신판 |
-| `INSTALL_SERVER_CERT_SHA256` | 위 `INSTALL_AGENT_SERVER` 의 서버 인증서 SHA-256 지문. keytool 출력 그대로(콜론 허용). 비어 있으면 설치 링크가 스크립트를 내주지 않는다. 얻는 법은 ADR 019 |
+| `INSTALL_SERVER_CERT_SHA256` | 위 `INSTALL_AGENT_SERVER` 의 서버 인증서 SHA-256 지문. keytool 출력 그대로(콜론 허용). 비어 있으면 설치 링크가 스크립트를 내주지 않는다. 얻는 법은 ADR 024 |
 
 ### 소스에서 직접 깔기
 

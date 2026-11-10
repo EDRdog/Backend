@@ -15,7 +15,7 @@
 #   sudo ./install-macos.sh --server <호스트:포트> --enroll-secret <값> \
 #     --server-cert-sha256 <지문> [--binary <경로>]
 #
-# 지문은 운영자가 배포서버의 키스토어에서 읽어 준다(docs/design-docs/decisions/019).
+# 지문은 운영자가 배포서버의 키스토어에서 읽어 준다(docs/design-docs/decisions/024).
 # keytool 출력(AB:CD:...) 그대로 넣어도 된다.
 #
 # 여러 번 실행해도 안전하다. 같은 값으로 덮어쓴다.

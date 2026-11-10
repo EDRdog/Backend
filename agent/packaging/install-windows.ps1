@@ -22,7 +22,7 @@
 
 .PARAMETER ServerCertSha256
     서버 인증서의 SHA-256 지문. 운영자가 배포서버의 키스토어에서 읽어 준다
-    (docs/design-docs/decisions/019). keytool 출력(AB:CD:...) 그대로 넣어도 된다.
+    (docs/design-docs/decisions/024). keytool 출력(AB:CD:...) 그대로 넣어도 된다.
     받은 인증서가 이 값과 다르면 설치를 멈춘다.
 
 .PARAMETER Binary
