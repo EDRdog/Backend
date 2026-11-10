@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.event.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.clickhouse.ClickHouseReader;
@@ -27,6 +29,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 @Tag(name = "events", description = "이벤트 조회 및 요약 (ClickHouse, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class EventGeoController {
 
     private static final String BEARER_PREFIX = "Bearer ";

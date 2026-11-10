@@ -1,0 +1,33 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/file/file_event/file_event_win_lsass_default_dump_file_names.yml (id a5a2d357-1ab8-4675-a967-ef9990a59391)
+# 바꾼 것: 없음(level high 는 file 룰이라 MEDIUM 으로 깎인다).
+title: LSASS Process Memory Dump Files
+id: a5a2d357-1ab8-4675-a967-ef9990a59391
+name: file_lsass_dump_name
+status: test
+description: 'Detects creation of files with names used by different memory dumping tools to create a memory dump of the LSASS process memory, which contains user credentials.'
+author: 'Florian Roth (Nextron Systems)'
+tags:
+  - attack.credential-access
+  - attack.t1003.001
+logsource:
+  category: file_event
+detection:
+  selection_1:
+    TargetFilename|endswith:
+      - '\Andrew.dmp'
+      - '\Coredump.dmp'
+      - '\lsass.dmp'
+      - '\lsass.rar'
+      - '\lsass.zip'
+      - '\NotLSASS.zip'  # https://github.com/CCob/MirrorDump
+      - '\PPLBlade.dmp'  # https://github.com/tastypepperoni/PPLBlade
+      - '\rustive.dmp' # https://github.com/safedv/RustiveDump/blob/main/src/main.rs#L35
+  selection_2:
+    TargetFilename|contains:
+      - '\lsass_2'  # default format of procdump v9.0 is lsass_YYMMDD_HHmmss.dmp
+      - '\lsassdmp'
+      - '\lsassdump'
+  condition: 1 of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: medium

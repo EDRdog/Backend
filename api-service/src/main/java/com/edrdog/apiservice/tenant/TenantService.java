@@ -33,6 +33,15 @@ public class TenantService {
         tenants.save(tenant);
     }
 
+    /** 저장된 webhook 을 비운다. 이미 비어 있어도 그대로 성공한다. */
+    @Transactional
+    public void clearWebhook(Long tenantId) {
+        Tenant tenant = tenants.findById(tenantId)
+                .orElseThrow(() -> AuthException.notFound("tenant 를 찾을 수 없습니다"));
+        tenant.updateWebhook(null);
+        tenants.save(tenant);
+    }
+
     @Transactional(readOnly = true)
     public Optional<String> getWebhook(Long tenantId) {
         Tenant tenant = tenants.findById(tenantId)

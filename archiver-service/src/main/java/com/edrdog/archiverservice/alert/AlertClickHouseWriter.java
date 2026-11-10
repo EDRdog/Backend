@@ -32,7 +32,9 @@ public class AlertClickHouseWriter {
     /** 나중에 추가돼 ALTER 로 한 번 더 보장하는 컬럼. */
     private static final List<String> ADDED_COLUMNS = List.of(
             "domain String",
-            "dest_ip String"
+            "dest_ip String",
+            // 이 컬럼이 없으면 api-service 가 kill 대상을 요청 본문에서 받을 수밖에 없다(KISA H3)
+            "target String"
     );
 
     /** 보관기간 90일. SHOW CREATE 결과와 문자열 비교하므로 정규형으로 쓴다. */
@@ -64,6 +66,7 @@ public class AlertClickHouseWriter {
                         matched Array(String),
                         domain String,
                         dest_ip String,
+                        target String,
                         created_at DateTime64(3) DEFAULT now64(3)
                     ) ENGINE = ReplacingMergeTree(created_at)
                     ORDER BY (tenant_id, host, id)
@@ -109,6 +112,7 @@ public class AlertClickHouseWriter {
         row.put("matched", alert.matched() == null ? new ArrayList<>() : alert.matched());
         row.put("domain", nz(alert.domain()));
         row.put("dest_ip", nz(alert.destIp()));
+        row.put("target", nz(alert.target()));
         http.execute("INSERT INTO " + table + " FORMAT JSONEachRow\n" + toJson(row));
     }
 

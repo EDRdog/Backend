@@ -98,11 +98,20 @@ public class DemoAccountSeeder {
             users.delete(legacy);
             log.info("이메일 형식이 아니던 옛 데모 계정 정리: {}", LEGACY_EMAIL);
         });
-        if (users.existsByEmail(EMAIL)) {
+        Optional<AppUser> existing = users.findByEmail(EMAIL);
+        if (existing.isPresent()) {
+            // 이미 있으면 패스워드는 덮지 않는다. 데모 계정 표시만 보장한다(표시가 없던 옛 시드 계정 포함).
+            AppUser user = existing.get();
+            if (!user.isDemoAccount()) {
+                user.markDemoAccount();
+                users.save(user);
+            }
             log.info("데모 계정이 이미 있어 건너뜁니다: {}", EMAIL);
             return;
         }
-        users.save(AppUser.of(EMAIL, encoder.encode(PASSWORD), TENANT_ID, ROLE, Instant.now()));
+        AppUser user = AppUser.of(EMAIL, encoder.encode(PASSWORD), TENANT_ID, ROLE, Instant.now());
+        user.markDemoAccount();   // KISA 보안 규칙 일부를 적용받지 않는 데모 전용 계정
+        users.save(user);
         log.info("데모 계정 생성: id={} / pw={} (tenantId={})", EMAIL, PASSWORD, TENANT_ID);
     }
 }

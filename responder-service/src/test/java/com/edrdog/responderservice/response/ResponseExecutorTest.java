@@ -22,6 +22,7 @@ class ResponseExecutorTest {
 
     private static final long COOLDOWN_MS = 60_000;
     private static final long TIMEOUT_MS = 30_000;
+    private static final String TENANT = "7";
 
     /** 시한·쿨다운을 결정적으로 검증하려고 시각을 손으로 옮기는 시계. */
     private static final class MovableClock extends Clock {
@@ -63,59 +64,68 @@ class ResponseExecutorTest {
     /** 에이전트 한 번의 하트비트: 명령을 가져가 주어진 상태로 보고한다. */
     private void agentReports(String host, String status) {
         CommandQueue queue = queue();
-        queue.drainFor(host).forEach(c -> queue.complete(c.id(), status, "테스트"));
+        queue.drainFor(TENANT, host).forEach(c -> queue.complete(c.id(), TENANT, host, status, "테스트"));
     }
 
     @Test
     @DisplayName("실행 스위치 OFF 면 명령을 만들지 않고 DISABLED")
     void disabled_noCommand() {
-        ExecuteResult result = executor(false).killProcess("lab-win", "powershell.exe");
+        ExecuteResult result = executor(false).killProcess(TENANT, "lab-win", "powershell.exe");
 
         assertThat(result.status()).isEqualTo("DISABLED");
         assertThat(result.executionId()).isNull();
-        assertThat(queue().drainFor("lab-win")).isEmpty();
+        assertThat(queue().drainFor(TENANT, "lab-win")).isEmpty();
     }
 
     @Test
     @DisplayName("kill 요청은 기다리지 않고 PENDING 과 명령 id 를 바로 돌려준다")
     void kill_returnsPendingImmediately() {
-        ExecuteResult result = executor(true).killProcess("lab-mac", "/tmp/evil.sh");
+        ExecuteResult result = executor(true).killProcess(TENANT, "lab-mac", "/tmp/evil.sh");
 
         assertThat(result.status()).isEqualTo("PENDING");
         assertThat(result.executionId()).isNotBlank();
-        assertThat(queue().drainFor("lab-mac")).singleElement()
+        assertThat(queue().drainFor(TENANT, "lab-mac")).singleElement()
                 .satisfies(c -> assertThat(c.id()).isEqualTo(result.executionId()));
     }
 
     @Test
     @DisplayName("같은 호스트가 쿨다운 안에 다시 오면 COOLDOWN. 다른 인스턴스가 보낸 명령도 센다")
     void cooldown_sharedAcrossInstances() {
-        ExecuteResult first = executor(true).killProcess("lab-win", "powershell.exe");
-        ExecuteResult second = executor(true).killProcess("lab-win", "cmd.exe");
+        ExecuteResult first = executor(true).killProcess(TENANT, "lab-win", "powershell.exe");
+        ExecuteResult second = executor(true).killProcess(TENANT, "lab-win", "cmd.exe");
 
         assertThat(first.status()).isEqualTo("PENDING");
         assertThat(second.status()).isEqualTo("COOLDOWN");
         assertThat(second.executionId()).isNull();
-        assertThat(queue().drainFor("lab-win")).hasSize(1);
+        assertThat(queue().drainFor(TENANT, "lab-win")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("쿨다운은 tenant 별이다. 다른 tenant 의 같은 이름 호스트는 막지 않는다")
+    void cooldown_isPerTenant() {
+        executor(true).killProcess(TENANT, "lab-win", "powershell.exe");
+
+        assertThat(executor(true).killProcess("8", "lab-win", "powershell.exe").status()).isEqualTo("PENDING");
     }
 
     @Test
     @DisplayName("쿨다운이 지나면 다시 나간다")
     void cooldown_expires() {
-        executor(true).killProcess("lab-win", "powershell.exe");
+        executor(true).killProcess(TENANT, "lab-win", "powershell.exe");
 
         clock.advance(Duration.ofMillis(COOLDOWN_MS + 1));
 
-        assertThat(executor(true).killProcess("lab-win", "cmd.exe").status()).isEqualTo("PENDING");
+        assertThat(executor(true).killProcess(TENANT, "lab-win", "cmd.exe").status()).isEqualTo("PENDING");
     }
 
     @Test
     @DisplayName("에이전트가 결과를 보고하기 전에는 PENDING")
     void result_pendingBeforeReport() {
-        String id = executor(true).killProcess("lab-mac", "curl").executionId();
+        String id = executor(true).killProcess(TENANT, "lab-mac", "curl").executionId();
 
         assertThat(executor(true).result(id)).hasValueSatisfying(r -> {
             assertThat(r.status()).isEqualTo("PENDING");
+            assertThat(r.tenantId()).isEqualTo(TENANT);
             assertThat(r.host()).isEqualTo("lab-mac");
             assertThat(r.target()).isEqualTo("curl");
         });
@@ -124,7 +134,7 @@ class ResponseExecutorTest {
     @Test
     @DisplayName("에이전트가 KILLED 를 보고하면 다른 인스턴스에서 조회해도 KILLED")
     void result_killed() {
-        String id = executor(true).killProcess("lab-mac", "/tmp/evil.sh").executionId();
+        String id = executor(true).killProcess(TENANT, "lab-mac", "/tmp/evil.sh").executionId();
         agentReports("lab-mac", "KILLED");
 
         assertThat(executor(true).result(id)).hasValueSatisfying(r -> {
@@ -136,7 +146,7 @@ class ResponseExecutorTest {
     @Test
     @DisplayName("에이전트가 NO_MATCH 를 보고하면 NO_MATCH")
     void result_noMatch() {
-        String id = executor(true).killProcess("lab-mac", "curl").executionId();
+        String id = executor(true).killProcess(TENANT, "lab-mac", "curl").executionId();
         agentReports("lab-mac", "NO_MATCH");
 
         assertThat(executor(true).result(id)).hasValueSatisfying(r -> assertThat(r.status()).isEqualTo("NO_MATCH"));
@@ -145,7 +155,7 @@ class ResponseExecutorTest {
     @Test
     @DisplayName("에이전트가 모르는 상태를 보고하면 FAILED")
     void result_unknownStatusIsFailed() {
-        String id = executor(true).killProcess("lab-mac", "curl").executionId();
+        String id = executor(true).killProcess(TENANT, "lab-mac", "curl").executionId();
         agentReports("lab-mac", "KILLED_MAYBE");
 
         assertThat(executor(true).result(id)).hasValueSatisfying(r -> assertThat(r.status()).isEqualTo("FAILED"));
@@ -154,7 +164,7 @@ class ResponseExecutorTest {
     @Test
     @DisplayName("시한 안에 결과가 없으면 TIMEOUT (에이전트가 안 가져갔거나 보고가 없음)")
     void result_timesOut() {
-        String id = executor(true).killProcess("오프라인-호스트", "curl").executionId();
+        String id = executor(true).killProcess(TENANT, "오프라인-호스트", "curl").executionId();
 
         clock.advance(Duration.ofMillis(TIMEOUT_MS + 1));
 
@@ -164,13 +174,13 @@ class ResponseExecutorTest {
     @Test
     @DisplayName("TIMEOUT 으로 보인 명령은 그 뒤에 호스트가 돌아와도 내려가지 않는다 (재시도와 겹쳐 두 번 죽이지 않는다)")
     void timedOutCommandIsNeverDelivered() {
-        String id = executor(true).killProcess("오프라인-호스트", "curl").executionId();
+        String id = executor(true).killProcess(TENANT, "오프라인-호스트", "curl").executionId();
         clock.advance(Duration.ofMillis(TIMEOUT_MS + 1));
         assertThat(executor(true).result(id)).hasValueSatisfying(r -> assertThat(r.status()).isEqualTo("TIMEOUT"));
 
         clock.advance(Duration.ofMinutes(3));
 
-        assertThat(queue().drainFor("오프라인-호스트")).isEmpty();
+        assertThat(queue().drainFor(TENANT, "오프라인-호스트")).isEmpty();
     }
 
     @Test
@@ -184,12 +194,12 @@ class ResponseExecutorTest {
     void queueError_returnsFailed() {
         CommandQueue broken = new CommandQueue(repository, TIMEOUT_MS, clock) {
             @Override
-            public String dispatch(String host, String type, String target) {
+            public String dispatch(String tenantId, String host, String type, String target) {
                 throw new IllegalStateException("저장 실패");
             }
         };
         ResponseExecutor executor = new ResponseExecutor(broken, true, COOLDOWN_MS, TIMEOUT_MS, clock);
 
-        assertThat(executor.killProcess("lab-mac", "curl").status()).isEqualTo("FAILED");
+        assertThat(executor.killProcess(TENANT, "lab-mac", "curl").status()).isEqualTo("FAILED");
     }
 }

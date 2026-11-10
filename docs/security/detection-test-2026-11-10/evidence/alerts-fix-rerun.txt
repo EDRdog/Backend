@@ -1,0 +1,9 @@
+   ┌─────────────────────utc─┬─rule_id────────────────────┬─severity─┬─action─┬─target───────────────────────────────────────────────────────────────────────────────────────────────┐
+1. │ 2026-11-10 18:12:20.698 │ SCRIPT_FROM_TEMP_PATH      │ MEDIUM   │ notify │ /bin/bash /tmp/edrdogtest20261110181220D02/edrdogtest20261110181220D02.sh                            │
+2. │ 2026-11-10 18:13:30.424 │ SCRIPT_FROM_TEMP_PATH      │ MEDIUM   │ notify │ /bin/bash /private/tmp/claude-501/-Users-dhkim-1Project-EDRdog-Frontend/c629185c-cb3e-4b4a-b26e-1a78 │
+3. │ 2026-11-10 18:19:52.398 │ FILE_IN_AUTORUN_PATH       │ MEDIUM   │ notify │ /Users/dhkim/Library/LaunchAgents/edrtest-edrdogtest20261110181220D03.not-a-plist                    │
+4. │ 2026-11-10 18:27:23.263 │ MACOS_TMUTIL_DELETE_BACKUP │ MEDIUM   │ notify │ /usr/bin/tmutil delete /tmp/edrtest-edrdogtest20261110181220D08-nonexistent                          │
+5. │ 2026-11-10 18:29:43.993 │ SCRIPT_FROM_TEMP_PATH      │ MEDIUM   │ notify │ /bin/bash /tmp/edrdogtest20261110182943D02/edrdogtest20261110182943D02.sh                            │
+6. │ 2026-11-10 18:35:18.244 │ FILE_IN_AUTORUN_PATH       │ MEDIUM   │ notify │ /Users/dhkim/Library/LaunchAgents/edrtest-edrdogtest20261110182943D03.not-a-plist                    │
+7. │ 2026-11-10 18:40:51.683 │ MACOS_TMUTIL_DELETE_BACKUP │ MEDIUM   │ notify │ /usr/bin/tmutil delete /tmp/edrtest-edrdogtest20261110182943D08-nonexistent                          │
+   └─────────────────────────┴────────────────────────────┴──────────┴────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────┘

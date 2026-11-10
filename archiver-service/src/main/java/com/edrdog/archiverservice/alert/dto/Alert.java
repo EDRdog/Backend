@@ -7,6 +7,7 @@ import java.util.List;
  *
  * @param ts       판정 시각 (epoch millis)
  * @param tenantId 조직(tenant) 식별자 (문자열)
+ * @param target   조치 대상 프로세스명/경로. api-service 의 kill 이 요청 본문 대신 이 값을 쓴다
  * @param domain   이 알림과 관련된 목적지 도메인 (없으면 빈 문자열)
  * @param destIp   이 알림과 관련된 목적지 IP
  */
@@ -19,6 +20,7 @@ public record Alert(
         long ts,
         List<String> matched,
         String tenantId,
+        String target,
         String domain,
         String destIp
 ) {

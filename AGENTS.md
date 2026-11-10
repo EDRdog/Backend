@@ -40,6 +40,7 @@
 - 진행 중인 작업 계획: `docs/exec-plans/active/`
 - 끝난 작업 기록: `docs/exec-plans/completed/`
 - 기술부채: `docs/exec-plans/tech-debt.md`
+- 보안 점검 결과와 처리 현황(KISA, 국정원 기준): `docs/security/`
 
 ## 작업 방식
 

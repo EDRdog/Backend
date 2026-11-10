@@ -81,8 +81,14 @@ curl -sk https://localhost:8443/api/agent/enroll -H 'Content-Type: application/j
 ```
 
 엔드포인트에는 `./dev-tls/agent-server.pem` 을 배포하고 설정 파일을 맞춘다.
-설치 스크립트를 쓰면 이 PEM 을 서버에서 직접 받아 오므로 파일을 따로 옮기지 않아도 된다
-([`../agent/README.md`](../agent/README.md) 의 `설치`).
+설치 스크립트를 쓰면 이 PEM 을 서버에서 받아 오므로 파일을 따로 옮기지 않아도 된다. 대신 받은 인증서를
+대조할 SHA-256 지문이 있어야 한다. 아래 명령의 `SHA-256` 줄을 api-service 의 `INSTALL_SERVER_CERT_SHA256`
+(운영은 Infisical)에 넣는다. 비어 있으면 설치 링크가 스크립트를 내주지 않는다
+([`../docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md`](../docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md)).
+
+```bash
+keytool -list -keystore ./dev-tls/agent-keystore.p12 -storepass changeit -alias agent
+```
 
 ```json
 {

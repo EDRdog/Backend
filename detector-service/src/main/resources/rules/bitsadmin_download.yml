@@ -1,0 +1,34 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_bitsadmin_download.yml (id d059842b-6b9d-4ed1-b5c3-5b89143c6ede)
+# 바꾼 것: OriginalFileName 조건을 뺐다. MITRE 첫 태그를 t1105 로 올렸다.
+title: File Download Via Bitsadmin
+id: d059842b-6b9d-4ed1-b5c3-5b89143c6ede
+name: bitsadmin_download
+status: test
+description: 'Detects usage of bitsadmin downloading a file'
+author: 'Michael Haag, FPT.EagleEye'
+tags:
+  - attack.command-and-control
+  - attack.t1105
+  - attack.persistence
+  - attack.execution
+  - attack.stealth
+  - attack.t1197
+  - attack.s0190
+  - attack.t1036.003
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\bitsadmin.exe'
+  selection_cmd:
+    CommandLine|contains: ' /transfer '
+  selection_cli_1:
+    CommandLine|contains:
+      - ' /create '
+      - ' /addfile '
+  selection_cli_2:
+    CommandLine|contains: 'http'
+  condition: selection_img and (selection_cmd or all of selection_cli_*)
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

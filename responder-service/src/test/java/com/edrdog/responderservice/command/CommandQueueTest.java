@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CommandQueueTest {
 
     private static final long WINDOW_MS = 30_000;
+    private static final String TENANT = "7";
 
     /** 만료를 결정적으로 검증하려고 시각을 손으로 옮기는 시계. */
     static final class MovableClock extends Clock {
@@ -56,9 +57,9 @@ class CommandQueueTest {
     @DisplayName("dispatch 한 명령이 그 호스트의 drainFor 로 나온다")
     void dispatchThenDrain() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "/tmp/evil.sh");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "/tmp/evil.sh");
 
-        List<Command> drained = queue.drainFor("lab-mac");
+        List<Command> drained = queue.drainFor(TENANT, "lab-mac");
 
         assertThat(drained).singleElement().satisfies(c -> {
             assertThat(c.id()).isEqualTo(id);
@@ -71,10 +72,10 @@ class CommandQueueTest {
     @DisplayName("한 번 꺼낸 명령은 다시 나오지 않는다")
     void drainIsOnce() {
         CommandQueue queue = queue();
-        queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
-        assertThat(queue.drainFor("lab-mac")).hasSize(1);
-        assertThat(queue.drainFor("lab-mac")).isEmpty();
+        assertThat(queue.drainFor(TENANT, "lab-mac")).hasSize(1);
+        assertThat(queue.drainFor(TENANT, "lab-mac")).isEmpty();
     }
 
     @Test
@@ -82,39 +83,62 @@ class CommandQueueTest {
     void sharedAcrossInstances() {
         CommandQueue a = queue();
         CommandQueue b = queue();
-        String id = a.dispatch("lab-mac", "kill_process", "curl");
+        String id = a.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
-        assertThat(b.drainFor("lab-mac")).singleElement().extracting(Command::id).isEqualTo(id);
-        assertThat(a.drainFor("lab-mac")).isEmpty();
+        assertThat(b.drainFor(TENANT, "lab-mac")).singleElement().extracting(Command::id).isEqualTo(id);
+        assertThat(a.drainFor(TENANT, "lab-mac")).isEmpty();
     }
 
     @Test
     @DisplayName("다른 호스트의 명령은 섞이지 않는다")
     void hostsAreIsolated() {
         CommandQueue queue = queue();
-        queue.dispatch("lab-mac", "kill_process", "curl");
-        queue.dispatch("lab-win", "kill_process", "evil.exe");
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.dispatch(TENANT, "lab-win", "kill_process", "evil.exe");
 
-        assertThat(queue.drainFor("lab-mac")).singleElement()
+        assertThat(queue.drainFor(TENANT, "lab-mac")).singleElement()
                 .extracting(Command::target).isEqualTo("curl");
-        assertThat(queue.drainFor("lab-win")).singleElement()
+        assertThat(queue.drainFor(TENANT, "lab-win")).singleElement()
                 .extracting(Command::target).isEqualTo("evil.exe");
+    }
+
+    @Test
+    @DisplayName("다른 tenant 의 같은 이름 호스트에는 명령이 내려가지 않는다")
+    void tenantsAreIsolated() {
+        CommandQueue queue = queue();
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+
+        assertThat(queue.drainFor("8", "lab-mac")).isEmpty();
+        assertThat(queue.drainFor(TENANT, "lab-mac")).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("명령을 받은 노드가 아닌 곳(다른 tenant, 다른 호스트)에서 온 결과 보고는 반영하지 않는다")
+    void reportFromOtherNodeIgnored() {
+        CommandQueue queue = queue();
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.drainFor(TENANT, "lab-mac");
+
+        queue.complete(id, "8", "lab-mac", "KILLED", "다른 tenant 의 같은 이름 기기");
+        queue.complete(id, TENANT, "lab-win", "KILLED", "같은 tenant 의 다른 기기");
+
+        assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo(CommandQueue.DELIVERED));
     }
 
     @Test
     @DisplayName("명령이 없는 호스트는 빈 목록")
     void unknownHostIsEmpty() {
-        assertThat(queue().drainFor("없는-호스트")).isEmpty();
+        assertThat(queue().drainFor(TENANT, "없는-호스트")).isEmpty();
     }
 
     @Test
     @DisplayName("꺼내 간 명령에 결과를 보고하면 find 로 보인다")
     void completeIsVisible() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        queue.drainFor("lab-mac");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.drainFor(TENANT, "lab-mac");
 
-        queue.complete(id, "KILLED", "pid 4242 종료");
+        queue.complete(id, TENANT, "lab-mac", "KILLED", "pid 4242 종료");
 
         assertThat(queue.find(id)).hasValueSatisfying(c -> {
             assertThat(c.getStatus()).isEqualTo("KILLED");
@@ -126,10 +150,10 @@ class CommandQueueTest {
     @DisplayName("모르는 상태 문자열은 FAILED 로 저장한다 (엔드포인트 값을 그대로 믿지 않는다)")
     void unknownStatusStoredAsFailed() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        queue.drainFor("lab-mac");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.drainFor(TENANT, "lab-mac");
 
-        queue.complete(id, "KILLED_MAYBE", "?");
+        queue.complete(id, TENANT, "lab-mac", "KILLED_MAYBE", "?");
 
         assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo("FAILED"));
     }
@@ -138,10 +162,10 @@ class CommandQueueTest {
     @DisplayName("긴 보고 메시지는 컬럼 길이로 잘라 저장한다 (결과가 유실되지 않는다)")
     void longMessageTruncated() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        queue.drainFor("lab-mac");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.drainFor(TENANT, "lab-mac");
 
-        queue.complete(id, "FAILED", "x".repeat(5000));
+        queue.complete(id, TENANT, "lab-mac", "FAILED", "x".repeat(5000));
 
         assertThat(queue.find(id)).hasValueSatisfying(c -> {
             assertThat(c.getStatus()).isEqualTo("FAILED");
@@ -153,9 +177,9 @@ class CommandQueueTest {
     @DisplayName("아직 꺼내 가지 않은 명령에 온 결과는 버린다")
     void completeBeforeDeliveryIgnored() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
-        queue.complete(id, "KILLED", "위조");
+        queue.complete(id, TENANT, "lab-mac", "KILLED", "위조");
 
         assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo(CommandQueue.PENDING));
     }
@@ -164,11 +188,11 @@ class CommandQueueTest {
     @DisplayName("이미 결과가 있는 명령에 다시 온 보고는 덮어쓰지 않는다")
     void secondReportIgnored() {
         CommandQueue queue = queue();
-        String id = queue.dispatch("lab-mac", "kill_process", "curl");
-        queue.drainFor("lab-mac");
-        queue.complete(id, "KILLED", "첫 보고");
+        String id = queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
+        queue.drainFor(TENANT, "lab-mac");
+        queue.complete(id, TENANT, "lab-mac", "KILLED", "첫 보고");
 
-        queue.complete(id, "FAILED", "두 번째");
+        queue.complete(id, TENANT, "lab-mac", "FAILED", "두 번째");
 
         assertThat(queue.find(id)).hasValueSatisfying(c -> assertThat(c.getStatus()).isEqualTo("KILLED"));
     }
@@ -176,7 +200,7 @@ class CommandQueueTest {
     @Test
     @DisplayName("모르는 명령 id 에 온 보고는 터지지 않는다")
     void unknownIdIgnored() {
-        queue().complete("없는-id", "KILLED", "늦은 보고");
+        queue().complete("없는-id", TENANT, "lab-mac", "KILLED", "늦은 보고");
 
         assertThat(queue().find("없는-id")).isEmpty();
     }
@@ -185,22 +209,22 @@ class CommandQueueTest {
     @DisplayName("전달 시한을 넘긴 명령은 drainFor 에 나오지 않는다")
     void expiredIsNotDrained() {
         CommandQueue queue = queue();
-        queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
         clock.advance(Duration.ofMillis(WINDOW_MS + 1));
 
-        assertThat(queue.drainFor("lab-mac")).isEmpty();
+        assertThat(queue.drainFor(TENANT, "lab-mac")).isEmpty();
     }
 
     @Test
     @DisplayName("전달 시한 안이면 그대로 남는다")
     void notYetExpiredStays() {
         CommandQueue queue = queue();
-        queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
         clock.advance(Duration.ofMillis(WINDOW_MS - 1));
 
-        assertThat(queue.drainFor("lab-mac")).hasSize(1);
+        assertThat(queue.drainFor(TENANT, "lab-mac")).hasSize(1);
     }
 
     @Test
@@ -208,10 +232,10 @@ class CommandQueueTest {
     void dispatchedSince() {
         CommandQueue queue = queue();
         Instant before = clock.instant();
-        queue.dispatch("lab-mac", "kill_process", "curl");
+        queue.dispatch(TENANT, "lab-mac", "kill_process", "curl");
 
-        assertThat(queue().dispatchedSince("lab-mac", before.minusMillis(1))).isTrue();
-        assertThat(queue().dispatchedSince("lab-win", before.minusMillis(1))).isFalse();
-        assertThat(queue().dispatchedSince("lab-mac", before.plusMillis(1))).isFalse();
+        assertThat(queue().dispatchedSince(TENANT, "lab-mac", before.minusMillis(1))).isTrue();
+        assertThat(queue().dispatchedSince(TENANT, "lab-win", before.minusMillis(1))).isFalse();
+        assertThat(queue().dispatchedSince(TENANT, "lab-mac", before.plusMillis(1))).isFalse();
     }
 }

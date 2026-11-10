@@ -35,19 +35,29 @@ macOS 라이브 캡처에서 실제로 잡힌 것이다. 암호화된 TLS 1.3 �
 프로세스의 소켓을 못 읽는 것으로 의심하지만 **확인된 것은 아니다.** 탐지 대상은 사용자가 실행한
 프로그램이라 실용적인 손해는 작지만, "항상 붙는다" 고 말할 수는 없다.
 
-**확인 안 된 것 (전부 Windows 다)**
+**Windows 는 ARM64 VM 에서만 확인했다**
 
-- **Windows ETW 센서를 실제 Windows 기기에서 한 번도 돌려보지 않았다.** 크로스 빌드와 순수 로직
-  단위 테스트까지가 전부다
-- **상수가 틀려도 빌드는 통과하고 조용히 0건이 된다. 이게 가장 위험하다.** 프로바이더 GUID,
-  keyword 비트, 이벤트 ID 는 컴파일러가 검사해 주지 않는다. 값 하나가 어긋나면 오류 없이
-  이벤트만 안 온다
-- **pktmon 으로 TLS SNI 를 받는 경로 전체가 미검증이다.** 이벤트 160 의 필드 배치는 Microsoft 의
-  NetMon 파서와 드라이버 헤더 두 곳을 대조해 잡았지만 실기기에서 확인한 것은 아니다. 어긋나면
-  `sizeMismatch` 로 잡히게 해 두었다. **Windows Defender 가 pktmon 조작을 막을 가능성이 이 경로에서
-  가장 큰 위험이다.** 공격 기법으로 공개된 방식이라 휴리스틱 탐지가 실재한다
-- Windows 서비스 등록과 `-service` 경로도 실기기 미검증이다
-- 설치 스크립트 두 개 다 실기기 미검증이다
+2026-11-11 Windows 11 ARM64 Pro VM(UTM, 빌드 26300.9711, Defender 실시간 보호 켬)에서 로컬 서버에
+붙여 돌렸다. 프로세스(notepad, 부모 powershell), 네트워크, DNS(example.org), 파일(시작프로그램 폴더
+CREATE), L7(TLS 1.3, SNI example.org) 다섯 종이 ClickHouse 까지 들어왔다. 몇 분씩 짧게 돌린 결과다.
+
+처음 돌렸을 때는 **ETW 센서가 관리자 권한에서도 시작하자마자 멈췄다.** golang-etw 가 이벤트 ID 필터
+버퍼를 붙잡아 두지 않아서 Windows 가 쓰레기 값을 읽고 `The parameter is incorrect` 를 냈다. 그래서
+라이브러리를 `third_party/golang-etw` 에 복사해 고쳐 쓴다(`docs/design-docs/decisions/025`).
+크로스 빌드와 단위 테스트로는 잡히지 않았다.
+
+아직 안 본 것:
+
+- **x64 데스크톱 Windows.** 실사용 PC 는 대부분 x64 다. 위 결과는 ARM64 VM 조건이다. x64 는 Windows Server 2025 GitHub Actions 러너에서 센서까지만 한 번 봤다(`internal/sensor/etw_live_windows_test.go`, `go test -tags etwlive`, 2026-11-11). 서버 전송, kill, 서비스 설치는 x64 에서 본 적이 없다
+- Defender 가 pktmon 조작을 막는지는 짧게 몇 번 돌려 막히지 않은 것까지만 봤다. 공격 기법으로
+  공개된 방식이라 휴리스틱 탐지가 실재하고, 오래 돌리거나 다른 Defender 버전에서는 다를 수 있다
+- 서버가 내려주는 설치 스크립트(`api-service/.../install/windows.ps1`). `packaging/install-windows.ps1`
+  은 같은 VM 에서 지문이 맞는 경우로 설치까지 돌렸고, 서비스가 LocalSystem 으로 떠서 ETW 세션을
+  열었다. ETW 세션을 밖에서 끊어 에이전트를 종료 코드 1 로 끝내자 SCM 이 60초 뒤 다시 띄웠다.
+  재부팅 뒤에도 SCM 이 다시 띄워 수집이 이어졌다
+- 지문이 다른 서버에서 설치 스크립트가 멈추는지
+- IPv6 연결(검증 절차 5번). 시험한 회선에 IPv6 이 없었다
+- 아무도 로그인하지 않은 부팅. VM 에 자동 로그인이 켜져 있었다
 
 확인 절차는 아래 [Windows 실기기 검증 절차](#windows-실기기-검증-절차) 에 우선순위 순으로 정리해 두었다.
 
@@ -208,6 +218,8 @@ handshake 가 끝난 뒤에 나가고 연결 이벤트는 커널이 SYN 을 낼 
 EndpointSecurity API 를 직접 부르려면 애플의 entitlement 심사를 통과해야 한다. `/usr/bin/eslogger`
 는 그 권한을 이미 가진 애플 서명 바이너리라, 심사 없이 같은 이벤트를 받을 수 있다. 에이전트는
 `eslogger --format json exec create rename unlink` 를 띄워 stdout 을 줄 단위로 읽는다.
+한 줄이 4MB 를 넘으면 그 줄만 건너뛰고(개수는 로그에 남는다) 계속 읽는다. 읽기가 끝나면 자식을 먼저
+죽이므로 센서가 대기하다 멎는 일은 없다(`docs/design-docs/decisions/023-skip-overlong-eslogger-line.md`).
 
 네트워크만 다르다. **EndpointSecurity API 에는 소켓 연결 이벤트가 없다.** 그래서 `libproc` 로
 프로세스별 열린 TCP 소켓을 주기마다 훑고, 직전 스냅샷에 없던 것만 새 연결로 본다. 첫 스냅샷은
@@ -229,7 +241,7 @@ EndpointSecurity API 를 직접 부르려면 애플의 entitlement 심사를 통
 
 | | 서버가 내려주는 것 | 에이전트가 하는 일 |
 |:---|:---|:---|
-| **macOS** | `~/Library/LaunchAgents` | `~` 를 실제 홈 디렉터리로 편다 (`ExpandWatchPaths`) |
+| **macOS** | `~/Library/LaunchAgents` | `~` 를 홈 디렉터리로 편다. root 데몬은 HOME 이 없어 `/Users` 아래 모든 사용자 홈마다 편다 (`ExpandWatchPaths`). 기동 뒤에 생긴 계정은 재시작해야 감시된다 |
 | **Windows** | `C:\Users\*\AppData\Roaming\...\Startup` | `*` 를 경로 한 단계와 맞춘다 (`matchesWatchPath`) |
 
 방식이 갈리는 이유는 커널이 주는 경로의 모양이 다르기 때문이다. macOS 는 절대 경로 하나로 오니
@@ -271,7 +283,8 @@ JSON 파일 하나다. 필드는 [`internal/config/config.go`](internal/config/c
   "ca_cert_path": "/etc/edrdog/server.pem",
   "flush_interval_seconds": 5,
   "buffer_size": 10000,
-  "batch_size": 500
+  "batch_size": 500,
+  "selfcheck_interval_seconds": 3600
 }
 ```
 
@@ -284,6 +297,7 @@ JSON 파일 하나다. 필드는 [`internal/config/config.go`](internal/config/c
 | `flush_interval_seconds` | | `5` | 이벤트 배치 전송 주기. **서버가 안 줄 때의 기본값이다.** 아래 참고. HTTP 타임아웃은 언제나 이 값을 쓴다 |
 | `buffer_size` | | `10000` | 전송 대기 버퍼 상한. 넘치면 오래된 것부터 버린다 |
 | `batch_size` | | `500` | 한 번에 보낼 이벤트 수 |
+| `selfcheck_interval_seconds` | | `3600` | 보안 기능 자체시험과 무결성 검증 주기. 아래 `자체시험·무결성·감사기록` 참고 |
 
 `enroll_secret` 이 들어 있으므로 파일 권한을 조여야 한다. 설치 스크립트는 macOS 에서 `0600`,
 Windows 에서 SYSTEM 과 Administrators 만 남기는 ACL 을 건다.
@@ -390,20 +404,30 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 
 바이너리는 GitHub Releases 에서 받는다(`.github/workflows/agent-release.yml` 이 태그를 밀 때 올린다).
 받은 뒤 `.sha256` 과 대조한다. 끊긴 다운로드는 크기만 작고 그대로 설치돼서, 깔린 뒤에 "왜 안 뜨지"
-로 시간을 버리게 된다.
+로 시간을 버리게 된다. `.sha256` 을 못 받으면 설치를 멈춘다. 해시는 바이너리와 같은 릴리스에서 오므로
+릴리스 자체가 바뀐 것까지는 못 막는다(서명은 아직 없다, `docs/exec-plans/tech-debt.md`).
 
-서버에 설정해야 하는 값은 셋이다.
+서버 인증서는 받기만 해서는 고정하지 않는다. 스크립트에 박힌 SHA-256 지문과 같을 때만 `server.pem` 으로
+쓰고, 다르면 멈춘다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이 고정된 서버가 되어 kill 명령까지
+보낼 수 있다(`docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md`).
+
+설치 스크립트는 설정 파일을 쓴 직후 무결성 기준값도 기록한다(`-record-baseline`). 에이전트 릴리스가 이 플래그를
+가진 뒤에 서버(설치 링크)를 배포해야 한다. 옛 바이너리는 플래그를 몰라 설치가 멈춘다.
+
+서버에 설정해야 하는 값은 넷이다.
 
 | 키 | 뜻 |
 |---|---|
 | `INSTALL_PUBLIC_BASE` | 링크 앞부분. 브라우저가 API 를 부르는 주소와 같다 |
 | `INSTALL_AGENT_SERVER` | 에이전트가 붙을 `host:port`. 위와 다를 수 있다(에이전트는 별도 TLS 포트로 붙는다) |
 | `INSTALL_DOWNLOAD_BASE` | 바이너리를 받는 곳. 기본은 GitHub Releases 최신판 |
+| `INSTALL_SERVER_CERT_SHA256` | 위 `INSTALL_AGENT_SERVER` 의 서버 인증서 SHA-256 지문. keytool 출력 그대로(콜론 허용). 비어 있으면 설치 링크가 스크립트를 내주지 않는다. 얻는 법은 ADR 024 |
 
 ### 소스에서 직접 깔기
 
-아래는 개발용 경로다. 릴리스가 없는 브랜치를 시험할 때 쓴다. 서버에서 인증서를 직접 받아 저장하는
-것은 위와 같고, 여러 번 실행해도 안전하다.
+아래는 개발용 경로다. 릴리스가 없는 브랜치를 시험할 때 쓴다. 서버 인증서를 받아 지문과 대조한 뒤에만
+저장하는 것은 위와 같고, 여러 번 실행해도 안전하다. 지문은 설치 링크가 없으니 인자로 받는다. 운영자가
+배포서버의 키스토어에서 읽어 준 값(ADR 024)을 그대로 넣는다.
 
 #### macOS
 
@@ -411,7 +435,7 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 
 ```bash
 sudo ./agent/packaging/bootstrap-macos.sh \
-  --server edr.example.com:30443 --enroll-secret <발급받은 값>
+  --server edr.example.com:30443 --server-cert-sha256 <지문> --enroll-secret <발급받은 값>
 ```
 
 시크릿을 아직 안 받았으면 대신 받아 오게 할 수 있다. 비밀번호는 인자로 받지 않고 물어본다.
@@ -419,7 +443,7 @@ sudo ./agent/packaging/bootstrap-macos.sh \
 
 ```bash
 sudo ./agent/packaging/bootstrap-macos.sh \
-  --server edr.example.com:30443 --email me@example.com --api-key <프론트 키>
+  --server edr.example.com:30443 --server-cert-sha256 <지문> --email me@example.com --api-key <프론트 키>
 ```
 
 `--api-key` 가 필요한 이유는 `/api/tenant` 가 `X-API-Key` 예외 경로가 아니라서다
@@ -445,7 +469,8 @@ Enter 를 누르면 이어서 재시작하고 등록됐는지까지 확인한다
 ```bash
 cd agent
 go build -o packaging/edrdog-agent ./cmd/edrdog-agent
-sudo ./packaging/install-macos.sh --server edr.example.com:30443 --enroll-secret <발급받은 값>
+sudo ./packaging/install-macos.sh --server edr.example.com:30443 --enroll-secret <발급받은 값> \
+  --server-cert-sha256 <지문>
 ```
 
 바이너리를 `/usr/local/bin/edrdog-agent` 에 놓고, 설정을 `/etc/edrdog/config.json` 에 쓰고,
@@ -466,7 +491,7 @@ tail -f /var/log/edrdog/agent.log              # 로그
 관리자 권한 PowerShell 에서 실행한다.
 
 ```powershell
-.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <발급받은 값>
+.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <발급받은 값> -ServerCertSha256 <지문>
 ```
 
 `C:\Program Files\EDRdog\edrdog-agent.exe` 에 놓고 설정을 `C:\ProgramData\EDRdog\config.json` 에
@@ -479,6 +504,72 @@ Get-Service edrdog-agent
 
 서비스로 등록될 때 바이너리에 `-service` 플래그가 붙는다. 이 플래그는 서비스 제어 관리자와
 대화하는 모드로, 직접 실행할 때는 쓰지 않는다.
+
+## 자체시험·무결성·감사기록 (KISA BF-10, BF-11, BF-13)
+
+에이전트가 자기 보안 기능이 멀쩡한지 스스로 확인하고, 그 결과와 주요 사건을 서버에 감사기록으로 남긴다.
+왜 이렇게 정했는지와 버린 대안은 [ADR 030](../docs/design-docs/decisions/030-agent-selftest-integrity-audit.md),
+서버와의 계약은 [`agent-protocol.md`](../docs/agent-protocol.md) 5절이다.
+
+**`-selftest` 와 다르다.** `-selftest` 는 센서 대신 가짜 이벤트를 보내 서버까지의 경로를 확인한다. 이쪽은 에이전트 자신의
+보안 설정을 점검한다. 이름이 섞이지 않게 플래그는 `-security-check`, 패키지는 `internal/selfcheck`, 감사 사건은
+`security_check` 와 `integrity_check` 로 불렀다.
+
+| 항목 | 보는 것 | 통과 조건 |
+|:---|:---|:---|
+| `server_pinning` | 서버 인증서 고정 | `base_url` 이 https 이고 `ca_cert_path` 의 CA 를 읽을 수 있다 |
+| `config_permission` | 설정 파일 권한(enroll_secret 이 들어 있다) | 그룹·기타 사용자 접근 불가(`0600`) |
+| `ca_cert_permission` | 고정 인증서 권한 | 그룹·기타 사용자 쓰기 불가 |
+| `sensors` | 센서 생존 | 띄운 센서가 전부 살아 있다 |
+| `binary_integrity` | 자기 실행 파일의 SHA-256 | 설치 때 기록한 기준값과 같다 |
+| `config_integrity` | 설정 파일의 SHA-256 | 설치 때 기록한 기준값과 같다 |
+
+`skip` 은 그 환경에서 확인할 수 없다는 뜻이고 실패가 아니다. 기동 시점에는 센서가 아직 없어 `sensors` 가 `skip` 이고,
+**Windows 에서는 권한 두 항목이 `skip` 이다**(ACL 을 읽지 않는다. `docs/exec-plans/tech-debt.md`).
+
+**언제 돌리나.** 기동할 때 한 번, 이후 `selfcheck_interval_seconds` 마다 돌려 결과를 감사기록으로 남긴다. 관리자는 엔드포인트에서 직접
+요청할 수 있다. 서버로 보내지 않고 항목별 결과를 출력하며, 실패가 하나라도 있으면 종료 코드가 1 이다.
+
+```bash
+sudo ./edrdog-agent -config /etc/edrdog/config.json -security-check
+```
+
+```
+server_pinning       ok
+config_permission    ok
+ca_cert_permission   ok
+sensors              skip  센서를 띄우기 전이다
+binary_integrity     ok    sha256=7e9eeaa6...
+config_integrity     fail  기준값과 다르다 (기준 db61d722..., 현재 4f0c1a9e...)
+```
+
+**무결성 기준값.** 설치 스크립트가 설정 파일을 쓴 직후 `-record-baseline` 으로 바이너리와 설정 파일의 SHA-256 을
+설정 파일 옆 `integrity.json` 에 쓴다(`/etc/edrdog/integrity.json`, `C:\ProgramData\EDRdog\integrity.json`).
+정당한 교체는 설치 스크립트를 다시 돌리는 것이고, 그때 기준값도 새로 쓴다. 바이너리만 손으로 덮어쓰면(`cp`) TCC 도 풀리고
+무결성 실패도 남는다. 기준값 파일이 없거나 깨졌으면 둘 다 실패다. **기준값이 없는 옛 설치는 설치 스크립트를 다시 돌릴 때까지
+무결성 실패로 기록된다.**
+
+**이것이 막지 못하는 것.** 에이전트는 root·SYSTEM 으로 돈다. 그 권한을 가진 사람은 바이너리와 기준값을 같이 바꿀 수 있다.
+로컬 비교가 잡는 것은 관리자 아닌 쪽의 변경과 사고성 손상이다. 통과한 항목의 현재 SHA-256 이 감사기록 `detail` 로 서버에
+남으므로, 관리자는 그 값을 릴리스 `.sha256` 과 대조할 수 있다.
+
+**실패해도 에이전트는 계속 돈다.** 멈추면 그 기기의 수집과 대응이 같이 멈춘다. 대응은 로그 경고와 감사기록의 `failure` 다.
+
+**감사기록.** 아래 사건을 메모리 로그(상한 1000건)에 쌓고, 이벤트 전송 주기마다 `POST /api/agent/audit` 로 보낸다.
+서버가 못 받으면 로그에 남겨 두고 다음 주기에 다시 보낸다. 종료할 때는 `agent_stop` 을 남기고 마지막으로 한 번 더 보낸다.
+
+| 사건 | 시점 |
+|:---|:---|
+| `agent_start`, `agent_stop` | 시작과 종료. 강제 종료(SIGKILL, 전원 차단)는 남지 않는다 |
+| `agent_enroll` | 서버 등록 성공 |
+| `sensor_stop` | 센서가 오류로 멈춤 |
+| `security_check`, `integrity_check` | 기동 시와 주기마다 |
+| `command_result` | 대응 명령 실행(이미 실행한 명령을 다시 받아 결과만 다시 보고할 때는 안 남긴다) |
+
+에이전트가 죽으면 못 보낸 감사기록은 사라진다(디스크 큐 없음). 감사기록에 비밀값을 싣지 않는다. 무결성 결과에는 파일의
+해시만 들어간다.
+
+관리자는 서버의 감사기록 조회로 에이전트의 자체시험과 무결성 결과를 본다.
 
 ## `-selftest` 로 서버까지의 경로 확인
 
@@ -528,6 +619,8 @@ GOOS=windows GOARCH=amd64 go build ./...
 ### Windows 쪽은 실기기에서 검증되지 않았다
 
 크로스 컴파일과 순수 로직 단위 테스트까지만 통과했다. 확인하지 못한 것은 센서만이 아니다.
+아래 표는 ARM64 VM 검증 전(2026-11-11 이전) 상태다. VM 에서 본 결과는
+[Windows 실기기 검증 절차](#windows-실기기-검증-절차) 각 항목의 VM 결과 줄에 있다. x64 는 여전히 아래 표 그대로다.
 
 | | 확인 못 한 것 |
 |:---|:---|
@@ -712,7 +805,8 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json -selftest
 ```
 
-기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트 4종.
+기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트.
+ARM64 VM 에서는 process, network, dns, file, script, l7 여섯 종이 들어왔다.
 
 ### 1. 관리자 권한이 없으면 오류로 죽는가
 
@@ -724,7 +818,9 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json
 ```
 
-- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다**
+- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다.** 센서가 전부 멈추면 에이전트가 끝나게 한 것은
+  ARM64 VM 에서 이 항목이 어긋난 뒤다(그 전에는 오류만 남기고 계속 돌았다). 권한을 낮춰 띄울 때는
+  `runas /trustlevel:0x20000` 이 비밀번호 없이 된다
 
   ```
   ETW 세션(EDRdog-Agent)을 열지 못했다. 권한이 없다. 관리자 권한으로 실행하거나
@@ -738,7 +834,7 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 | 오류 코드 | 나와야 할 안내 | 일으키는 법 |
 |:---|:---|:---|
 | `ERROR_ACCESS_DENIED`(5) | 관리자 권한 / `Performance Log Users` 그룹 / LocalSystem 서비스 | 일반 사용자로 실행 |
-| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 에이전트를 두 개 띄우거나, 아래처럼 세션을 미리 만들어 둔다 |
+| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 실제로는 나오지 않는다. golang-etw 가 같은 이름의 세션을 멈추고 다시 연다. ARM64 VM 에서 아래처럼 세션을 미리 만들어 둬도 에이전트가 그 세션을 가져갔다 |
 | 그 밖 | 관리자 권한 안내로 물러난다 | |
 
 ```powershell
@@ -842,6 +938,8 @@ curl.exe https://example.com     # 443 으로 나가야 한다
 - `destPort=0` 이면 스왑 문제가 아니라 속성 이름이 다르거나 값이 숫자가 아닌 것이다.
   65535 를 넘는 값은 에이전트가 0 으로 떨어뜨린다
 
+**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711):** `curl.exe` 로 443 과 80 을 각각 열자 `destPort` 가 443, 80 으로 왔다. 스왑은 필요 없다. 다만 `curl.exe` 처럼 곧 끝나는 프로세스는 연결 이벤트의 `process` 가 비어 있었다(PID 로 이름을 찾기 전에 프로세스가 끝난다)
+
 ### 5. IPv6 연결(ID 28)의 `daddr` 가 IP 로 파싱되는가
 
 IPv4 와 IPv6 은 이벤트 ID 가 다르다(12 / 28). IPv6 쪽 `daddr` 가 IP 문자열이 아닌 모양으로 오면
@@ -863,6 +961,8 @@ curl.exe -6 https://ipv6.google.com
   Select-String -Path T6.xml -Pattern 'daddr' | Select-Object -First 10
   ```
 - IPv6 이 안 되는 회선이면 이 항목은 확인할 수 없다. 그때는 확인 못 했다고 남겨라
+
+**VM 결과(2026-11-11):** 확인하지 못했다. 시험한 회선(UTM 공유 네트워크, 맥 본체 포함)에 IPv6 인터넷 연결이 없어 `ipv6.google.com` 이름 풀이부터 실패했다
 
 ### 6. Kernel-File 의 장치 경로가 감시 경로 필터에 걸리는가
 
@@ -933,13 +1033,15 @@ powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
 - 비밀값 옵션(`-Password`, `/token:`, `-EncodedCommand` 등)의 값이 `<redacted>` 로 가려지는지도
   같이 본다
 
+**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711, Defender 켬):** 5초 사는 `powershell.exe -NoProfile -Command ...` 는 인자가 그대로 실렸다. 곧 끝나는 `cmd.exe /c exit` 50건은 **1건(2%)만** 인자가 실렸고 나머지는 `\Device\HarddiskVolume3\Windows\System32\cmd.exe` 처럼 장치 경로만 남았다. **짧게 끝나는 프로세스의 명령행 탐지는 사실상 안 됐다.** 그래서 시스템 프로세스 프로바이더에서 명령행을 받게 바꿨고(ADR 026), 고친 뒤 같은 시험에서 50건 모두 실렸다(ARM64 빌드, amd64 빌드의 x64 에뮬레이션 둘 다). 합친 명령행의 첫 토큰은 장치 경로로 남는다. `-Password <값>` 은 `<redacted>` 로 가려졌다. 단 PowerShell `-ArgumentList "-Password","hunter2"` 처럼 따옴표와 쉼표로 붙은 형태는 가려지지 않았다
+
 ### 8. 서비스로 등록해 부팅 후 자동 기동되는가
 
 지금까지는 콘솔에서 확인한 것이다. 서비스 모드는 SCM 과 대화하는 경로가 따로 있고
 (`service_windows.go`), 그 경로도 미검증이다.
 
 ```powershell
-.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <값>
+.\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret <값> -ServerCertSha256 <지문>
 Get-Service edrdog-agent          # Running 이어야 한다
 
 Restart-Computer
@@ -959,6 +1061,10 @@ Get-Service edrdog-agent          # 로그인 없이도 Running 이어야 한다
   서비스가 뜨는데 이벤트만 0건이면 콘솔로 다시 띄워 로그를 직접 봐라. 이건 지금 구조의 약점이고,
   실기기 검증에서 문제가 되면 파일 로깅을 넣어야 한다
 
+**VM 결과(2026-11-11):** `install-windows.ps1` 로 설치하자 `BINARY_PATH_NAME` 에 `-service` 가 붙고 Running 이 됐다. 재부팅하니 부팅 6초 뒤 에이전트가 등록 실패로 종료 코드 1 로 끝났고(서버까지 가는 터널이 아직 없었다), SCM 이 60초 뒤 다시 띄워 다섯 종이 다시 들어왔다. **에이전트는 등록에 실패하면 다시 시도하지 않고 끝난다.** SCM 재시작이 하루 3번이라 부팅 후 3분 넘게 서버에 닿지 않으면 그날은 수집이 멈췄다. 그래서 등록을 될 때까지 다시 시도하게 바꿨다(ADR 026). 고친 amd64 빌드(x64 에뮬레이션)를 서비스로 깔고 서버 없이 재부팅하자 7분 넘게 같은 프로세스가 살아 있었고 SCM 실패 기록이 0건이었다. 터널을 연 뒤 다음 시도에서 붙어 이벤트가 다시 들어왔다. VM 에 자동 로그인이 켜져 있어 로그인 없는 부팅은 엄밀히 보지 못했다.
+
+처음에는 설치 스크립트가 **구문 오류로 멈췄다.** 한국어 Windows 의 PowerShell 5.1 은 BOM 없는 파일을 cp949 로 읽어 한글 문자열이 깨진다. 그래서 `install-windows.ps1` 은 UTF-8 BOM 을 붙여 두고 `scripts/check.sh` 가 확인한다
+
 ### 9. 조치가 실제로 나가는가
 
 ```powershell
@@ -970,6 +1076,8 @@ notepad.exe
 - `NO_MATCH` 면 `target` 문자열과 실제 이미지 경로의 매칭 규칙을 본다. Windows 는 대소문자를
   무시하고 비교한다
 - 여러 개 떠 있을 때 전부 죽는지, 일부만 죽으면 `FAILED` 로 보고되는지도 같이 본다
+
+**VM 결과(2026-11-11):** `ping.exe` 네 개를 띄우고 responder 로 kill 을 보내자 네 개가 다 죽고 `KILLED`, 메시지에 pid 네 개가 왔다. Windows 11 의 `notepad.exe` 는 ssh 세션(로그인 화면 밖)에서 띄우면 스스로 죽어서 `NO_MATCH` 가 났다. 시험 대상으로 쓰지 마라. 같은 host 에 60초 안에 다시 보내면 `COOLDOWN` 이다
 
 ### 10. TLS SNI 가 pktmon 으로 잡히는가
 

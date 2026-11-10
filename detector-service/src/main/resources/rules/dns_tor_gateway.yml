@@ -1,0 +1,56 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/dns_query/dns_query_win_tor_onion_domain_query.yml (id b55ca2a3-7cff-4dda-8bdd-c7bfa63bf544)
+# 바꾼 것: 없음(level high 는 dns 룰이라 MEDIUM 으로 깎인다).
+title: DNS Query Tor .Onion Address
+id: b55ca2a3-7cff-4dda-8bdd-c7bfa63bf544
+name: dns_tor_gateway
+status: test
+description: 'Detects DNS queries to an ".onion" address related to Tor routing networks'
+author: 'frack113'
+tags:
+  - attack.command-and-control
+  - attack.t1090.003
+logsource:
+  category: dns_query
+detection:
+  selection:
+    QueryName|endswith:
+      - '.hiddenservice.net'
+      - '.onion.ca'
+      - '.onion.cab'
+      - '.onion.casa'
+      - '.onion.city'
+      - '.onion.direct'
+      - '.onion.dog'
+      - '.onion.glass'
+      - '.onion.gq'
+      - '.onion.ink'
+      - '.onion.it'
+      - '.onion.link'
+      - '.onion.lt'
+      - '.onion.lu'
+      - '.onion.nu'
+      - '.onion.pet'
+      - '.onion.plus'
+      - '.onion.rip'
+      - '.onion.sh'
+      - '.onion.to'
+      - '.onion.top'
+      - '.onion'
+      - '.s1.tor-gateways.de'
+      - '.s2.tor-gateways.de'
+      - '.s3.tor-gateways.de'
+      - '.s4.tor-gateways.de'
+      - '.s5.tor-gateways.de'
+      - '.t2w.pw'
+      - '.tor2web.ae.org'
+      - '.tor2web.blutmagie.de'
+      - '.tor2web.com'
+      - '.tor2web.fi'
+      - '.tor2web.io'
+      - '.tor2web.org'
+      - '.tor2web.xyz'
+      - '.torlink.co'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: medium

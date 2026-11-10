@@ -23,4 +23,12 @@ class WebhookValidationTest {
         assertFalse(WebhookValidation.valid(""));
         assertFalse(WebhookValidation.valid("   "));
     }
+
+    @Test
+    void hostlessOverlongOrSpacedUrlsAreInvalid() {
+        assertFalse(WebhookValidation.valid("https://"));
+        assertFalse(WebhookValidation.valid("https:///path-only"));
+        assertFalse(WebhookValidation.valid("https://hooks.slack.com/a b"));
+        assertFalse(WebhookValidation.valid("https://hooks.slack.com/" + "a".repeat(300)));
+    }
 }

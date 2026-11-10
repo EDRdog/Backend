@@ -10,9 +10,11 @@ import java.util.List;
 
 public interface AgentCommandRepository extends JpaRepository<AgentCommand, String> {
 
-    List<AgentCommand> findByHostAndStatusAndCreatedAtAfterOrderByCreatedAt(String host, String status, Instant cutoff);
+    // host 이름은 tenant 마다 겹칠 수 있다. tenant 를 빼면 다른 조직의 같은 이름 기기가 명령을 받는다.
+    List<AgentCommand> findByTenantIdAndHostAndStatusAndCreatedAtAfterOrderByCreatedAt(
+            String tenantId, String host, String status, Instant cutoff);
 
-    boolean existsByHostAndCreatedAtAfter(String host, Instant since);
+    boolean existsByTenantIdAndHostAndCreatedAtAfter(String tenantId, String host, Instant since);
 
     /**
      * 상태가 from 일 때만 to 로 바꾼다. 바뀐 행 수(0 또는 1)를 돌려준다.

@@ -41,7 +41,7 @@ class InternalResolveTenantIntegrationTest {
     private String signupAndToken(String email) throws Exception {
         MvcResult r = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         return om.readTree(r.getResponse().getContentAsString()).get("token").asText();

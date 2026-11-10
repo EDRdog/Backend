@@ -200,6 +200,12 @@ Kafka 는 메시지를 메모리 큐가 아니라 디스크의 **append-only 로
 | R2 | 외부에서 받아온 파일을 실행 | T1105 + T1204 |
 | R3 | 임시나 다운로드 경로에서 스크립트 실행 | T1059 |
 | R4 | 자동실행 경로에 파일 생성 | T1547 |
+| R5 | 낡은 TLS(SSL 3.0, TLS 1.0, 1.1)로 맺은 연결 | T1573 |
+
+R1, R2 는 이벤트 여러 개를 시간 순으로 엮어야 해서 코드(`Rules.java`)에 있다. R3~R5 도 코드다. 이것들 말고 **이벤트 하나로 판정되는 룰**은
+Sigma 부분집합 파일로 읽는다. 파일만 바꿔 반영하고(운영은 ConfigMap, 30초마다 다시 읽음) 재배포가 없다.
+SigmaHQ 공개 룰에서 가져온 28개(Windows 명령행, macOS 명령행, DNS, 파일)가 기본으로 들어 있고, 목록과 출처는
+`detector-service/src/main/resources/rules/README.md`, 왜 이렇게 정했는지는 `docs/design-docs/decisions/020-sigma-subset-data-rules.md`.
 
 ### Kafka Streams 를 어떻게 구성했나
 

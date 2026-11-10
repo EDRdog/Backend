@@ -1,0 +1,6 @@
+잠금 시작 2026-11-11 06:28:52 (lockv), 정책 잠금 5분. 확인 시각 2026-11-11 06:34:03
+[DB] email	failed_logins	locked_until
+lock2v1794346077@example.com	0	2026-11-10 21:34:10.894389
+lockv1794346077@example.com	0	2026-11-10 21:33:52.507602
+[해제 뒤] lockv 맞는 비밀번호 | HTTP 200 | {"token": "(토큰 생략)", "userId": 11, "tenantId": 8, "email": "lockv1794346077@example.com", "role": "viewer", "mustChangePassword": true}
+[참고] lock2v(06:29:10 잠금, 아직 5분 전이면 401) 맞는 비밀번호 | HTTP 401

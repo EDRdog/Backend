@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.operations.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.operations.OperationsHealthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/operations")
 @Tag(name = "operations", description = "파이프라인 상태(Kafka lag, ClickHouse 적재 지연, 의존 저장소 도달 여부)")
+@RequiresRole(Role.VIEWER)
 public class OperationsHealthController {
 
     private static final String BEARER_PREFIX = "Bearer ";

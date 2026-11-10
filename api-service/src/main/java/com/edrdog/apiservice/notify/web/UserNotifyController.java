@@ -1,5 +1,11 @@
 package com.edrdog.apiservice.notify.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -7,6 +13,7 @@ import com.edrdog.apiservice.notify.AlertTarget;
 import com.edrdog.apiservice.notify.UserNotifyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,16 +42,19 @@ public class UserNotifyController {
 
     private final UserNotifyService notify;
     private final AuthService auth;
+    private final AuditService audit;
     private final String internalKey;
 
-    public UserNotifyController(UserNotifyService notify, AuthService auth,
+    public UserNotifyController(UserNotifyService notify, AuthService auth, AuditService audit,
                                @Value("${edrdog.internal.key}") String internalKey) {
         this.notify = notify;
         this.auth = auth;
+        this.audit = audit;
         this.internalKey = internalKey;
     }
 
     @Operation(summary = "내 webhook 등록", description = "로그인 유저의 개인 Slack webhook URL 을 저장한다.")
+    @RequiresRole(Role.ADMIN)
     @PutMapping("/api/me/webhook")
     public UserWebhookResponse setWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -54,7 +64,21 @@ public class UserNotifyController {
         return new UserWebhookResponse(p.userId(), req.webhookUrl());
     }
 
+    @Operation(summary = "내 webhook 삭제", description = "로그인 유저의 개인 Slack webhook URL 을 비운다(204). 이미 비어 있어도 204. webhook_change 감사기록이 남는다.")
+    @RequiresRole(Role.ADMIN)
+    @DeleteMapping("/api/me/webhook")
+    public ResponseEntity<Void> clearWebhook(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            HttpServletRequest http) {
+        Principal p = principal(authorization);
+        notify.clearWebhook(p.userId());
+        audit.record(AuditEntry.user(p, AuditType.WEBHOOK_CHANGE, "me", AuditResult.SUCCESS,
+                "remove", http.getRemoteAddr()));
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "내 webhook 조회", description = "로그인 유저의 개인 Slack webhook URL 을 조회한다. 미설정이면 null.")
+    @RequiresRole(Role.VIEWER)
     @GetMapping("/api/me/webhook")
     public UserWebhookResponse getWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -64,6 +88,7 @@ public class UserNotifyController {
 
     @Operation(summary = "내 webhook 테스트 알림",
             description = "저장된 개인 Slack webhook 으로 테스트 메시지를 보내 실제 도달 여부를 확인한다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/me/webhook/test")
     public ResponseEntity<Map<String, Object>> testWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -73,6 +98,7 @@ public class UserNotifyController {
     }
 
     @Operation(summary = "내 host 등록", description = "로그인 유저가 소유한 host 를 등록한다. 그 host 탐지 알림이 내 webhook 으로 온다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/me/hosts")
     public ResponseEntity<HostsResponse> registerHost(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -84,6 +110,7 @@ public class UserNotifyController {
     }
 
     @Operation(summary = "내 host 목록", description = "로그인 유저가 소유 등록한 host 목록을 조회한다.")
+    @RequiresRole(Role.VIEWER)
     @GetMapping("/api/me/hosts")
     public HostsResponse listHosts(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -92,6 +119,7 @@ public class UserNotifyController {
     }
 
     @Operation(summary = "내 host 해제", description = "로그인 유저가 소유 등록한 host 를 해제한다.")
+    @RequiresRole(Role.ADMIN)
     @DeleteMapping("/api/me/hosts/{host}")
     public ResponseEntity<Void> unregisterHost(
             @RequestHeader(name = "Authorization", required = false) String authorization,

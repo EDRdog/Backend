@@ -1,0 +1,33 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_shadowcopy_deletion.yml (id 21ff4ca9-f13a-41ad-b828-0077b2af2e40)
+# 바꾼 것: 없음.
+title: Deletion of Volume Shadow Copies via WMI with PowerShell
+id: 21ff4ca9-f13a-41ad-b828-0077b2af2e40
+name: powershell_shadowcopy_delete
+status: test
+description: 'Detects deletion of Windows Volume Shadow Copies with PowerShell code and Get-WMIObject. This technique is used by numerous ransomware families such as Sodinokibi/REvil'
+author: 'Tim Rauch, Elastic (idea)'
+tags:
+  - attack.impact
+  - attack.t1490
+logsource:
+  category: process_creation
+detection:
+  selection_get:
+    CommandLine|contains:
+      - 'Get-WmiObject'
+      - 'gwmi'
+      - 'Get-CimInstance'
+      - 'gcim'
+  selection_shadowcopy:
+    CommandLine|contains: 'Win32_ShadowCopy'
+  selection_delete:
+    CommandLine|contains:
+      - '.Delete()'
+      - 'Remove-WmiObject'
+      - 'rwmi'
+      - 'Remove-CimInstance'
+      - 'rcim'
+  condition: all of selection*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: high

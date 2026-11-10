@@ -182,3 +182,90 @@ func parsePID(s string) (int, bool) {
 	}
 	return pid, true
 }
+
+// processJoinWait 는 시작 이벤트가 짝을 기다리는 최대 시간이다. 짝은 보통 같은 버퍼로 바로 온다.
+// 넘기면 명령행 없이라도 내보낸다. 오래 사는 프로세스가 짝을 잃으면 끝날 때까지 안 나오기 때문이다.
+const processJoinWait = 2 * time.Second
+
+// maxEarlyCommandLines 는 짝보다 먼저 온 명령행을 들고 있는 상한이다. 넘으면 통째로 비운다.
+// ponytail: 짝(Kernel-Process 시작)을 잃은 명령행만 쌓이는 곳이라 단순히 비운다. 비워도 잃는 것은 그 명령행뿐이다.
+const maxEarlyCommandLines = 1024
+
+// HeldStart 는 짝을 기다리는 프로세스 시작이다. At 은 시작 이벤트의 시각이다.
+type HeldStart struct {
+	Props map[string]string
+	At    time.Time
+}
+
+// ProcessJoin 은 Kernel-Process 시작(전체 경로)과 같은 PID 의 시스템 프로세스 시작(명령행)을 합친다.
+// 곧 끝나는 프로세스는 NtQueryInformationProcess 로는 명령행을 못 읽는다(ARM64 VM 에서 50건 중 1건).
+// 시스템 이벤트는 커널이 생성 시점에 명령행을 싣는다. 같은 VM 에서는 50쌍 모두 Kernel-Process 쪽이
+// 먼저 왔지만 보장된 순서가 아니라 반대로 와도 합친다. 한 고루틴에서만 쓴다.
+type ProcessJoin struct {
+	held  map[int]HeldStart
+	early map[int]string
+}
+
+// Hold 는 Kernel-Process 시작을 받는다. 짝의 명령행이 이미 왔거나 PID 를 못 읽으면 바로 내보낼 것을 돌려준다.
+func (j *ProcessJoin) Hold(props map[string]string, at time.Time) (HeldStart, bool) {
+	start := HeldStart{Props: props, At: at}
+	pid, ok := parsePID(prop(props, propProcessID))
+	if !ok {
+		return start, true
+	}
+	if cmdline, ok := j.early[pid]; ok {
+		delete(j.early, pid)
+		props[propCommandLine] = cmdline
+		return start, true
+	}
+	if j.held == nil {
+		j.held = make(map[int]HeldStart)
+	}
+	j.held[pid] = start
+	return HeldStart{}, false
+}
+
+// Take 는 시스템 프로세스 시작을 받아, 같은 PID 의 시작이 있으면 명령행을 붙여 돌려준다.
+// 없으면 명령행을 들고 있다가 시작이 올 때 붙인다. 시스템 이벤트의 PID 는 0x 가 붙은 16진수다.
+func (j *ProcessJoin) Take(sys map[string]string) (HeldStart, bool) {
+	pid, err := strconv.ParseUint(strings.TrimPrefix(strings.ToLower(prop(sys, "ProcessId")), "0x"), 16, 32)
+	cmdline := prop(sys, propCommandLine)
+	if err != nil || cmdline == "" {
+		return HeldStart{}, false
+	}
+	start, ok := j.held[int(pid)]
+	if !ok {
+		if j.early == nil || len(j.early) >= maxEarlyCommandLines {
+			j.early = make(map[int]string)
+		}
+		j.early[int(pid)] = cmdline
+		return HeldStart{}, false
+	}
+	delete(j.held, int(pid))
+	start.Props[propCommandLine] = cmdline
+	return start, true
+}
+
+// Release 는 짝을 못 만난 시작을 꺼낸다. 프로세스가 끝났는데 시스템 이벤트가 안 왔을 때 쓴다.
+func (j *ProcessJoin) Release(pidText string) (HeldStart, bool) {
+	pid, ok := parsePID(pidText)
+	if !ok {
+		return HeldStart{}, false
+	}
+	delete(j.early, pid)
+	start, ok := j.held[pid]
+	delete(j.held, pid)
+	return start, ok
+}
+
+// Expire 는 now 기준으로 processJoinWait 보다 오래 짝을 기다린 시작을 꺼낸다.
+func (j *ProcessJoin) Expire(now time.Time) []HeldStart {
+	var out []HeldStart
+	for pid, start := range j.held {
+		if now.Sub(start.At) > processJoinWait {
+			out = append(out, start)
+			delete(j.held, pid)
+		}
+	}
+	return out
+}

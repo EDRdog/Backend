@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.host.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.alert.web.LineageResponse;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -22,6 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/hosts")
 @Tag(name = "hosts", description = "관측 호스트 목록 및 상태 요약 (events+alerts 집계, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class HostController {
 
     private static final String BEARER_PREFIX = "Bearer ";

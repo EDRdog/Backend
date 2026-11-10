@@ -112,7 +112,7 @@ class AlertApiIntegrationTest {
     private String[] signup(String email) throws Exception {
         MvcResult res = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         var node = om.readTree(res.getResponse().getContentAsString());
@@ -128,6 +128,7 @@ class AlertApiIntegrationTest {
                 "ts", String.valueOf(ts), "matched", List.of("m1")));
         row.put("domain", "evil.example.com");
         row.put("dest_ip", "203.0.113.9");
+        row.put("target", "evil.exe");
         alertRows.add(row);
         return id;
     }
@@ -406,8 +407,8 @@ class AlertApiIntegrationTest {
     void 자기_alert_respond_는_알림host로_responder에_위임하고_202로_명령id를_준다() throws Exception {
         String[] a = signup("a-respond@edrdog.com");
         String id = seedAlert(a[1], "hostA", 100L);
-        when(responder.kill(eq("hostA"), eq("evil.exe")))
-                .thenReturn(new KillResult("hostA", "evil.exe", "PENDING", "exec-1"));
+        when(responder.kill(eq(a[1]), eq("hostA"), eq("evil.exe")))
+                .thenReturn(new KillResult(a[1], "hostA", "evil.exe", "PENDING", "exec-1"));
 
         mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
                         .contentType(MediaType.APPLICATION_JSON)
@@ -417,8 +418,8 @@ class AlertApiIntegrationTest {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.executionId").value("exec-1"));
 
-        // host 는 알림에서 오고 클라이언트 입력이 아님을 확인
-        verify(responder).kill("hostA", "evil.exe");
+        // tenant·host 는 알림에서 오고 클라이언트 입력이 아님을 확인
+        verify(responder).kill(a[1], "hostA", "evil.exe");
     }
 
     @Test
@@ -426,8 +427,8 @@ class AlertApiIntegrationTest {
         // 쿨다운·스위치 꺼짐은 명령이 나가지 않은 것이다.
         String[] a = signup("a-respond-cool@edrdog.com");
         String id = seedAlert(a[1], "hostE", 500L);
-        when(responder.kill(eq("hostE"), eq("evil.exe")))
-                .thenReturn(new KillResult("hostE", "evil.exe", "COOLDOWN", null));
+        when(responder.kill(eq(a[1]), eq("hostE"), eq("evil.exe")))
+                .thenReturn(new KillResult(a[1], "hostE", "evil.exe", "COOLDOWN", null));
 
         mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
                         .contentType(MediaType.APPLICATION_JSON)
@@ -445,7 +446,7 @@ class AlertApiIntegrationTest {
         String[] a = signup("a-respond-confirm@edrdog.com");
         String id = seedAlert(a[1], "hostC", 300L);
         when(responder.killResult("exec-2"))
-                .thenReturn(Optional.of(new KillResult("hostC", "evil.exe", "KILLED", "exec-2")));
+                .thenReturn(Optional.of(new KillResult(a[1], "hostC", "evil.exe", "KILLED", "exec-2")));
 
         mvc.perform(get("/api/alerts/" + id + "/respond/exec-2").header("Authorization", "Bearer " + a[0]))
                 .andExpect(status().isOk())
@@ -462,9 +463,9 @@ class AlertApiIntegrationTest {
         String[] a = signup("a-respond-fail@edrdog.com");
         String id = seedAlert(a[1], "hostD", 400L);
         when(responder.killResult("exec-p"))
-                .thenReturn(Optional.of(new KillResult("hostD", "evil.exe", "PENDING", "exec-p")));
+                .thenReturn(Optional.of(new KillResult(a[1], "hostD", "evil.exe", "PENDING", "exec-p")));
         when(responder.killResult("exec-f"))
-                .thenReturn(Optional.of(new KillResult("hostD", "evil.exe", "FAILED", "exec-f")));
+                .thenReturn(Optional.of(new KillResult(a[1], "hostD", "evil.exe", "FAILED", "exec-f")));
 
         mvc.perform(get("/api/alerts/" + id + "/respond/exec-p").header("Authorization", "Bearer " + a[0]))
                 .andExpect(status().isOk())
@@ -484,9 +485,24 @@ class AlertApiIntegrationTest {
         String[] a = signup("a-respond-other@edrdog.com");
         String id = seedAlert(a[1], "hostA", 100L);
         when(responder.killResult("exec-x"))
-                .thenReturn(Optional.of(new KillResult("hostZ", "evil.exe", "KILLED", "exec-x")));
+                .thenReturn(Optional.of(new KillResult(a[1], "hostZ", "evil.exe", "KILLED", "exec-x")));
 
         mvc.perform(get("/api/alerts/" + id + "/respond/exec-x").header("Authorization", "Bearer " + a[0]))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
+                .andExpect(jsonPath("$.status").value("open"));
+    }
+
+    @Test
+    void respondResult_otherTenantCommand_404() throws Exception {
+        // 다른 조직의 같은 이름 기기에 나간 명령 id 로 이 알림을 confirmed 로 밀 수 있으면 안 된다.
+        String[] a = signup("a-respond-tenant@edrdog.com");
+        String id = seedAlert(a[1], "hostA", 100L);
+        when(responder.killResult("exec-t"))
+                .thenReturn(Optional.of(new KillResult("다른-tenant", "hostA", "evil.exe", "KILLED", "exec-t")));
+
+        mvc.perform(get("/api/alerts/" + id + "/respond/exec-t").header("Authorization", "Bearer " + a[0]))
                 .andExpect(status().isNotFound());
 
         mvc.perform(get("/api/alerts/" + id).header("Authorization", "Bearer " + a[0]))
@@ -526,20 +542,40 @@ class AlertApiIntegrationTest {
                         .content("{\"target\":\"evil.exe\"}"))
                 .andExpect(status().isNotFound());
 
-        verify(responder, never()).kill(any(), any());
+        verify(responder, never()).kill(any(), any(), any());
     }
 
     @Test
-    void respond_target_없으면_400() throws Exception {
-        String[] a = signup("a-respnotarget@edrdog.com");
+    void respond_usesAlertTargetAndIgnoresBody() throws Exception {
+        // 본문의 target 을 믿으면 로그인한 사용자가 그 기기의 아무 프로세스나 죽일 수 있다.
+        String[] a = signup("a-resptarget@edrdog.com");
         String id = seedAlert(a[1], "hostA", 100L);
+        alertRows.get(alertRows.size() - 1).put("target", "/tmp/evil.sh");
+        when(responder.kill(any(), any(), any()))
+                .thenReturn(new KillResult(a[1], "hostA", "/tmp/evil.sh", "PENDING", "exec-1"));
 
         mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"target\":\"  \"}"))
+                        .content("{\"target\":\"/sbin/launchd\"}"))
+                .andExpect(status().isAccepted());
+
+        verify(responder).kill(a[1], "hostA", "/tmp/evil.sh");
+        verify(responder, never()).kill(any(), any(), eq("/sbin/launchd"));
+    }
+
+    @Test
+    void respond_noAlertTarget_400() throws Exception {
+        // 대상을 저장하기 전에 쌓인 알림은 대상을 모른다. 본문 값으로 메우지 않는다.
+        String[] a = signup("a-respnotarget@edrdog.com");
+        String id = seedAlert(a[1], "hostA", 100L);
+        alertRows.get(alertRows.size() - 1).put("target", "");
+
+        mvc.perform(post("/api/alerts/" + id + "/respond").header("Authorization", "Bearer " + a[0])
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"target\":\"evil.exe\"}"))
                 .andExpect(status().isBadRequest());
 
-        verify(responder, never()).kill(any(), any());
+        verify(responder, never()).kill(any(), any(), any());
     }
 
     @Test
@@ -549,7 +585,7 @@ class AlertApiIntegrationTest {
                         .content("{\"target\":\"evil.exe\"}"))
                 .andExpect(status().isUnauthorized());
 
-        verify(responder, never()).kill(any(), any());
+        verify(responder, never()).kill(any(), any(), any());
     }
 
     // --- lineage ---

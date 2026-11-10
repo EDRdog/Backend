@@ -1,0 +1,6 @@
+시각 2026-11-11 07:09:41 #324 코드. 자체점검 요청자 표시: 같은 조직 요청자는 이메일, 다른 조직은 다른 조직 관리자 로 가려진다. 이메일은 앞 6자만 적는다.
+[tenant 8 admin 이 지금 실행] 화면에 본인 이메일 표시: True, 가림 문구 수 2, 다른 조직 이메일(kisaadmin, dettest) 노출: False
+[tenant 8 API] 요청자 있는 기록: id 53 MANUAL kisaev***@example.com, id 51 MANUAL 다른 조직 관리자, id 50 MANUAL 다른 조직 관리자, id 33 MANUAL 다른 조직 관리자, id 32 MANUAL 다른 조직 관리자, id 31 MANUAL 다른 조직 관리자, id 17 MANUAL 다른 조직 관리자
+[tenant 1 API] 요청자 있는 기록: id 53 MANUAL 다른 조직 관리자, id 51 MANUAL dettes***@local.test, id 50 MANUAL dettes***@local.test, id 33 MANUAL 다른 조직 관리자, id 32 MANUAL 다른 조직 관리자, id 31 MANUAL 다른 조직 관리자, id 17 MANUAL 다른 조직 관리자
+[tenant 1 화면] tenant 8 이메일(kisaev) 노출: False, 가림 문구 수 2
+참고: #324 이전에 만들어진 요청 기록(id 17, 31, 32, 33)은 요청 조직이 기록되지 않아 본인 조직 요청도 다른 조직 관리자 로 가려진다(안전한 쪽으로 가림).

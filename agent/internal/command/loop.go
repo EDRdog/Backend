@@ -25,6 +25,9 @@ type Killer interface {
 type Options struct {
 	Interval time.Duration
 	Logger   *slog.Logger
+	// OnResult 는 명령을 실제로 실행한 직후 불린다. 감사기록(KISA BF-13)을 남기는 자리다. nil 이면 건너뛴다.
+	// 이미 실행해서 저장된 결과를 다시 보고할 때는 불리지 않는다.
+	OnResult func(cmd transport.Command, result transport.CommandResult)
 }
 
 // Loop 는 하트비트로 명령을 받아 실행하고 결과를 보고한다. 엔드포인트가 방화벽 안쪽이라 에이전트가 먼저 물어본다.
@@ -33,6 +36,7 @@ type Loop struct {
 	killer   Killer
 	interval time.Duration
 	log      *slog.Logger
+	onResult func(cmd transport.Command, result transport.CommandResult)
 
 	// done 은 이미 실행한 명령의 결과다. 다시 내려온 명령을 재실행하면 그 사이 같은 이름으로 뜬 정상 프로세스를 죽인다.
 	done map[string]transport.CommandResult
@@ -55,6 +59,7 @@ func New(client Client, killer Killer, opts Options) *Loop {
 		killer:   killer,
 		interval: opts.Interval,
 		log:      opts.Logger,
+		onResult: opts.OnResult,
 		done:     make(map[string]transport.CommandResult),
 	}
 }
@@ -119,6 +124,9 @@ func (l *Loop) run(cmd transport.Command) transport.CommandResult {
 	}
 
 	l.remember(cmd.ID, result)
+	if l.onResult != nil {
+		l.onResult(cmd, result)
+	}
 	return result
 }
 

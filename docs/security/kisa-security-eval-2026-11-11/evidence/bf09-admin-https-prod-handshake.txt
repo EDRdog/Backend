@@ -1,0 +1,15 @@
+시각 2026-11-11 06:34:55 운영 관리접속 주소에 대한 TLS 핸드셰이크만 확인(읽기 전용, HTTP 요청 없음, stdin 비움). 요약 줄만 발췌.
+
+$ openssl s_client -connect edrdog-api.duckdns.org:30443 -servername edrdog-api.duckdns.org </dev/null
+depth=0 CN = edrdog-api.duckdns.org
+verify error:num=18:self signed certificate
+depth=0 CN = edrdog-api.duckdns.org
+CONNECTED(00000005)
+subject=/CN=edrdog-api.duckdns.org
+issuer=/CN=edrdog-api.duckdns.org
+New, TLSv1/SSLv3, Cipher is AEAD-CHACHA20-POLY1305-SHA256
+Server public key is 2048 bit
+    Protocol  : TLSv1.3
+    Cipher    : AEAD-CHACHA20-POLY1305-SHA256
+    Verify return code: 18 (self signed certificate)
+poll error

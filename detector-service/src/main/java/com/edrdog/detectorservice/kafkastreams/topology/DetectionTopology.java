@@ -2,6 +2,8 @@ package com.edrdog.detectorservice.kafkastreams.topology;
 
 import com.edrdog.detectorservice.dto.Alert;
 import com.edrdog.detectorservice.kafkastreams.serde.EventBufferSerde;
+import com.edrdog.detectorservice.rule.DataRules;
+import com.edrdog.detectorservice.rule.SigmaRule;
 import com.edrdog.schema.Event;
 import com.edrdog.schema.EventSerde;
 import com.edrdog.detectorservice.kafkastreams.serde.JsonSerde;
@@ -17,6 +19,9 @@ import org.apache.kafka.streams.state.Stores;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * events → 상관분석 → alerts 토폴로지 정의.
@@ -46,27 +51,31 @@ public class DetectionTopology {
     private final String alertsTopic;
     private final long graceMs;
     private final MeterRegistry metrics;
+    private final DataRules dataRules;
 
     public DetectionTopology(
             @Value("${edrdog.kafka.events-topic}") String eventsTopic,
             @Value("${edrdog.kafka.alerts-topic}") String alertsTopic,
             @Value("${edrdog.cep.grace-ms:" + GRACE_MS + "}") long graceMs,
-            MeterRegistry metrics) {
+            MeterRegistry metrics,
+            DataRules dataRules) {
         this.eventsTopic = eventsTopic;
         this.alertsTopic = alertsTopic;
         this.graceMs = graceMs;
         this.metrics = metrics;
+        this.dataRules = dataRules;
     }
 
     /** Spring Kafka Streams 가 주입하는 StreamsBuilder 에 파이프라인 등록. */
     @Autowired
     public void buildPipeline(StreamsBuilder builder) {
-        build(builder, eventsTopic, alertsTopic, WINDOW_MS, graceMs, metrics);
+        build(builder, eventsTopic, alertsTopic, WINDOW_MS, graceMs, metrics, dataRules::current);
     }
 
     /** 순수 토폴로지 구성 (TopologyTestDriver 테스트에서 직접 호출). */
     public static void build(StreamsBuilder builder, String eventsTopic, String alertsTopic,
-                             long windowMs, long graceMs, MeterRegistry metrics) {
+                             long windowMs, long graceMs, MeterRegistry metrics,
+                             Supplier<List<SigmaRule>> dataRules) {
         StoreBuilder<KeyValueStore<String, EventBuffer>> storeBuilder = Stores.keyValueStoreBuilder(
                 Stores.persistentKeyValueStore(CorrelationProcessor.STORE),
                 Serdes.String(),
@@ -80,7 +89,7 @@ public class DetectionTopology {
                 // host 기준 재분배 — 같은 host 이벤트를 한 태스크/스토어로 모아 상태 분할 방지
                 .repartition(Repartitioned.with(Serdes.String(), new EventSerde())
                         .withName("events-by-host"))
-                .process(() -> new CorrelationProcessor(windowMs, graceMs, metrics), CorrelationProcessor.STORE)
+                .process(() -> new CorrelationProcessor(windowMs, graceMs, metrics, dataRules), CorrelationProcessor.STORE)
                 .to(alertsTopic, Produced.with(Serdes.String(), new JsonSerde<>(Alert.class)));
     }
 }

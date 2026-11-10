@@ -23,6 +23,7 @@ public class ApiKeyPolicy {
             // 데모 시연만 인증이 아예 없다. 다른 예외 경로와 달리 DemoController 는 Principal 을 받지 않는다.
             // 대신 쓰기 대상을 데모 계정의 tenant 로, 발행 내용을 시나리오 4종으로 좁혀 막는다(DemoController).
             "/api/demo/",
+            "/api/audit",    // 감사기록 조회도 세션 Bearer 로 인증하고 admin 만 읽는다(AuditController)
             "/api/internal/",  // 서비스 간 조회는 별도 X-Internal-Key 로 인증(TenantController), 프론트 키와 분리
             "/i/"          // 설치 스크립트 배포. curl 한 줄이라 헤더를 못 붙이고, 링크의 설치 토큰 자체가 인증이다.
     );

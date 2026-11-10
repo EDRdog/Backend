@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.install.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -39,23 +41,27 @@ public class InstallController {
     private final InstallScripts scripts;
     private final String agentServer;
     private final String downloadBase;
+    private final String serverCertSha256;
 
     public InstallController(AuthService auth,
                              TenantService tenants,
                              InstallService install,
                              InstallScripts scripts,
                              @Value("${edrdog.install.agent-server:}") String agentServer,
-                             @Value("${edrdog.install.download-base:}") String downloadBase) {
+                             @Value("${edrdog.install.download-base:}") String downloadBase,
+                             @Value("${edrdog.install.server-cert-sha256:}") String serverCertSha256) {
         this.auth = auth;
         this.tenants = tenants;
         this.install = install;
         this.scripts = scripts;
         this.agentServer = agentServer;
         this.downloadBase = downloadBase;
+        this.serverCertSha256 = serverCertSha256;
     }
 
     @Operation(summary = "설치 링크 발급",
             description = "로그인 유저(Bearer)의 tenant 로 짧게 사는 설치 토큰을 만들고, 붙여넣을 한 줄 명령까지 돌려준다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/tenant/install-link")
     public InstallLinkResponse issue(@RequestHeader(name = "Authorization", required = false) String authorization) {
         Principal principal = auth.resolve(bearerToken(authorization));
@@ -87,10 +93,13 @@ public class InstallController {
         String secret = tenants.getEnrollSecret(tenantId)
                 .orElseThrow(() -> AuthException.notFound("tenant 의 enroll secret 이 없습니다"));
 
+        // 지문이 없으면 스크립트를 내주지 않는다. 스크립트는 받은 인증서를 이 값과 대조할 때만 고정한다(KISA H7).
         String body = InstallScript.render(template, Map.of(
                 "SERVER", requireConfigured(agentServer, "edrdog.install.agent-server"),
                 "ENROLL_SECRET", secret,
-                "DOWNLOAD_BASE", requireConfigured(downloadBase, "edrdog.install.download-base")));
+                "DOWNLOAD_BASE", requireConfigured(downloadBase, "edrdog.install.download-base"),
+                "SERVER_CERT_FINGERPRINT", InstallScript.normalizeFingerprint(
+                        requireConfigured(serverCertSha256, "edrdog.install.server-cert-sha256"))));
 
         // 중간에 끼는 캐시가 이 응답을 들고 있으면 만료된 토큰의 스크립트가 계속 나간다.
         return ResponseEntity.ok()

@@ -48,7 +48,8 @@ class AlertIngestListenerKafkaTest {
     void 발행한_alert_가_리스너를_거쳐_적재로_넘어간다() {
         String json = """
                 {"tenantId":"1","host":"host-1","ruleId":"DOWNLOAD_AND_EXECUTE","mitre":"T1105",
-                 "severity":"CRITICAL","action":"kill","ts":1700000000000,"matched":["evidence"]}
+                 "severity":"CRITICAL","action":"kill","ts":1700000000000,"matched":["evidence"],
+                 "target":"/tmp/evil.sh"}
                 """;
 
         try (var producer = new KafkaProducer<String, String>(
@@ -60,6 +61,6 @@ class AlertIngestListenerKafkaTest {
 
         // 실패하면 리스너가 레코드를 못 받은 것이다. 파라미터 해석 실패가 여기서 잡힌다.
         verify(alertWriter, timeout(15_000))
-                .insert(any(), argThat(a -> "host-1".equals(a.host())));
+                .insert(any(), argThat(a -> "host-1".equals(a.host()) && "/tmp/evil.sh".equals(a.target())));
     }
 }

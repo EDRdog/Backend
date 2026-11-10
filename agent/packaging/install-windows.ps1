@@ -1,18 +1,18 @@
-<#
+﻿<#
 .SYNOPSIS
     EDRdog 에이전트를 Windows 에 설치한다.
 
 .DESCRIPTION
     하는 일:
       1. 에이전트 바이너리를 C:\Program Files\EDRdog 에 놓는다
-      2. 수집 서버에서 서버 인증서를 직접 받아 저장한다(관리자가 따로 전달할 필요가 없다)
-      3. 설정 파일을 만든다(enroll secret 포함, 관리자만 읽게 ACL 을 건다)
+      2. 수집 서버에서 서버 인증서를 받아, 운영자에게 받은 SHA-256 지문과 같을 때만 저장한다
+      3. 설정 파일을 만들고(enroll secret 포함, 관리자만 읽게 ACL 을 건다) 바이너리와 설정 파일의 무결성 기준값을 기록한다
       4. Windows 서비스로 등록해 부팅 시 LocalSystem 으로 기동시킨다
 
     macOS 와 달리 사람이 승인할 단계가 없다. ETW 는 LocalSystem 이면 권한이 이미 있다.
 
-    주의: 이 스크립트와 Windows ETW 센서는 아직 실제 Windows 기기에서 검증되지 않았다.
-    크로스 빌드와 순수 로직 단위 테스트만 통과한 상태다. agent/README.md 의 검증 절차를 참고해라.
+    Windows 11 ARM64 VM 에서만 설치까지 돌려 봤다(2026-11-11). x64 실기기는 아직이다.
+    agent/README.md 의 Windows 실기기 검증 절차를 참고해라.
 
 .PARAMETER Server
     수집 서버 주소. 호스트:포트 형식이다.
@@ -20,15 +20,21 @@
 .PARAMETER EnrollSecret
     조직의 enroll secret. 대시보드에서 발급받는다.
 
+.PARAMETER ServerCertSha256
+    서버 인증서의 SHA-256 지문. 운영자가 배포서버의 키스토어에서 읽어 준다
+    (docs/design-docs/decisions/024). keytool 출력(AB:CD:...) 그대로 넣어도 된다.
+    받은 인증서가 이 값과 다르면 설치를 멈춘다.
+
 .PARAMETER Binary
     에이전트 바이너리 경로. 생략하면 이 스크립트 옆의 edrdog-agent.exe 를 쓴다.
 
 .EXAMPLE
-    .\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret abc123
+    .\install-windows.ps1 -Server edr.example.com:30443 -EnrollSecret abc123 -ServerCertSha256 AB:CD:...
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Server,
     [Parameter(Mandatory = $true)][string]$EnrollSecret,
+    [Parameter(Mandatory = $true)][string]$ServerCertSha256,
     [string]$Binary
 )
 
@@ -39,6 +45,7 @@ $ConfDir    = 'C:\ProgramData\EDRdog'
 $BinPath    = Join-Path $InstallDir 'edrdog-agent.exe'
 $ConfigPath = Join-Path $ConfDir 'config.json'
 $CertPath   = Join-Path $ConfDir 'server.pem'
+$BaselinePath = Join-Path $ConfDir 'integrity.json'
 $ServiceName = 'edrdog-agent'
 
 function Fail($message) {
@@ -53,6 +60,12 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     Fail '관리자 권한 PowerShell 에서 실행해야 한다'
 }
 
+# 콜론을 빼고 대문자로 맞춘다. keytool 출력을 그대로 붙여 넣어도 되게 한다.
+$ServerCertSha256 = ($ServerCertSha256 -replace ':', '').ToUpperInvariant()
+if ($ServerCertSha256 -notmatch '^[A-F0-9]{64}$') {
+    Fail '-ServerCertSha256 은 SHA-256 지문(16진수 64자, 콜론 허용)이어야 한다'
+}
+
 if (-not $Binary) {
     $Binary = Join-Path $PSScriptRoot 'edrdog-agent.exe'
 }
@@ -64,7 +77,7 @@ Write-Host '[1/4] 바이너리 설치'
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Copy-Item -Force $Binary $BinPath
 
-Write-Host "[2/4] 서버 인증서 수신 ($Server)"
+Write-Host "[2/4] 서버 인증서 수신과 지문 대조 ($Server)"
 New-Item -ItemType Directory -Force -Path $ConfDir | Out-Null
 $parts = $Server.Split(':')
 $hostName = $parts[0]
@@ -72,10 +85,18 @@ $port = if ($parts.Length -gt 1) { [int]$parts[1] } else { 443 }
 
 $tcp = $null
 $ssl = $null
+# 검증 콜백이 본 지문. 대조에 실패했을 때 무엇을 받았는지 보여 주려고 남긴다.
+$seen = @{}
 try {
     $tcp = [System.Net.Sockets.TcpClient]::new($hostName, $port)
-    # 여기서는 인증서를 받아오기만 한다. 실제 검증은 에이전트가 이 파일로 고정해서 한다.
-    $callback = [System.Net.Security.RemoteCertificateValidationCallback] { param($s, $c, $ch, $e) $true }
+    # 에이전트가 이 인증서로 서버를 고정한다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이
+    # 고정된 서버가 되어 kill 명령까지 보낼 수 있다. 운영자에게 받은 지문과 같을 때만 받아들인다.
+    $callback = [System.Net.Security.RemoteCertificateValidationCallback] {
+        param($s, $c, $ch, $e)
+        $hash = [System.Security.Cryptography.SHA256]::Create().ComputeHash($c.GetRawCertData())
+        $seen.Fp = [BitConverter]::ToString($hash) -replace '-', ''
+        $seen.Fp -eq $ServerCertSha256
+    }
     $ssl = [System.Net.Security.SslStream]::new($tcp.GetStream(), $false, $callback)
     $ssl.AuthenticateAsClient($hostName)
     $der = $ssl.RemoteCertificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
@@ -83,6 +104,9 @@ try {
     "-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----" |
         Set-Content -Path $CertPath -Encoding ascii
 } catch {
+    if ($seen.Fp -and $seen.Fp -ne $ServerCertSha256) {
+        Fail "서버 인증서 지문이 다르다 (기대 $ServerCertSha256, 실제 $($seen.Fp)). 중간에서 가로챈 연결일 수 있어 설치를 멈춘다"
+    }
     Fail "서버 인증서를 받지 못했다: $($_.Exception.Message)"
 } finally {
     if ($ssl) { $ssl.Dispose() }
@@ -99,17 +123,24 @@ $config = @"
 "@
 [System.IO.File]::WriteAllText($ConfigPath, $config)
 
-# enroll secret 이 들어 있으므로 일반 사용자가 읽으면 안 된다.
+# 무결성 기준값. 에이전트가 기동 시와 주기마다 바이너리와 설정 파일을 이 값과 비교한다(ADR 030).
+# 정당한 교체는 이 스크립트를 다시 돌리는 것이라 기준값도 같이 새로 기록된다.
+& $BinPath -config $ConfigPath -record-baseline
+if ($LASTEXITCODE -ne 0) { Fail '무결성 기준값을 기록하지 못했다' }
+
+# 설정 파일에는 enroll secret 이 들어 있고, 기준값 파일은 바꾸면 검증이 무력해진다. 일반 사용자가 건드리면 안 된다.
 # 상속을 끊고 SYSTEM 과 Administrators 만 남긴다.
-$acl = Get-Acl $ConfigPath
-$acl.SetAccessRuleProtection($true, $false)
-$acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
-foreach ($who in @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')) {
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-        $who, 'FullControl', 'Allow')
-    $acl.AddAccessRule($rule)
+foreach ($path in @($ConfigPath, $BaselinePath)) {
+    $acl = Get-Acl $path
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
+    foreach ($who in @('NT AUTHORITY\SYSTEM', 'BUILTIN\Administrators')) {
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $who, 'FullControl', 'Allow')
+        $acl.AddAccessRule($rule)
+    }
+    Set-Acl -Path $path -AclObject $acl
 }
-Set-Acl -Path $ConfigPath -AclObject $acl
 
 Write-Host '[4/4] 서비스 등록'
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -129,6 +160,14 @@ New-Service -Name $ServiceName `
     -DisplayName 'EDRdog Agent' `
     -Description '엔드포인트 행위를 수집해 EDRdog 서버로 보낸다' `
     -StartupType Automatic | Out-Null
+
+# 센서가 전부 멈추면 에이전트가 종료 코드 1 로 끝난다(ADR 025). 그때 SCM 이 1분 뒤 다시 띄운다.
+# failureflag 1 이 없으면 SCM 은 정상 정지 보고(종료 코드만 1)를 실패로 치지 않아 재시작하지 않는다.
+# 하루 동안 실패가 없으면 실패 횟수를 되돌린다.
+sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failure 종료 코드 $LASTEXITCODE)" }
+sc.exe failureflag $ServiceName 1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failureflag 종료 코드 $LASTEXITCODE)" }
 
 Start-Service -Name $ServiceName
 Start-Sleep -Seconds 3

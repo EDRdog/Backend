@@ -154,7 +154,7 @@ class DemoCollectIntegrationTest {
         when(arrivals.arrivedAt(anyString())).thenReturn(Optional.of(System.currentTimeMillis()));
         when(alerts.get(anyString(), anyString())).thenAnswer(inv -> new AlertResponse(
                 inv.getArgument(1), "DESKTOP-CHOI", "DOWNLOAD_AND_EXECUTE", "다운로드 후 실행",
-                "T1105+T1204", "CRITICAL", "kill", System.currentTimeMillis(), "open",
+                "T1105+T1204", "CRITICAL", "kill", "update32.exe", System.currentTimeMillis(), "open",
                 List.of("network 185.220.101.5:443", "process update32.exe"),
                 "", "185.220.101.5", null, null));
     }

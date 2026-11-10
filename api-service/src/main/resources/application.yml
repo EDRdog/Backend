@@ -65,6 +65,10 @@ edrdog:
     # 에이전트가 붙을 주소(host:port). 위와 다를 수 있다. 에이전트는 api-service 가 아니라
     # 수집 입구인 collector-service 의 TLS 포트로 붙기 때문이다.
     agent-server: ${INSTALL_AGENT_SERVER:}
+    # 위 주소가 내놓을 서버 인증서의 SHA-256 지문(keytool 출력 그대로, 콜론 허용). 운영은 Infisical 주입.
+    # 설치 스크립트는 받은 인증서를 이 값과 대조해 같을 때만 고정한다. 비어 있으면 설치 스크립트를 내주지 않는다.
+    # 얻는 법: docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md
+    server-cert-sha256: ${INSTALL_SERVER_CERT_SHA256:}
     # 에이전트 바이너리를 받는 곳. CI 가 릴리스에 올린다(.github/workflows/agent-release.yml).
     download-base: ${INSTALL_DOWNLOAD_BASE:https://github.com/EDRdog/Backend/releases/latest/download}
     # 설치 링크의 수명. 짧게 두는 이유는 링크가 새면 그 시간 동안 남의 기기가 우리 테넌트로
@@ -104,5 +108,13 @@ edrdog:
     connect-timeout-ms: ${CLICKHOUSE_CONNECT_TIMEOUT_MS:2000}
     # 조회는 사용자가 화면 앞에서 기다리는 요청이라 짧게 잡는다(데모 store-timeout 8s 안쪽).
     read-timeout-ms: ${CLICKHOUSE_READ_TIMEOUT_MS:5000}
+  selftest:
+    # 서버 자체시험(KISA BF-10)과 무결성 검증(BF-11). 기동 시, 이 주기, 관리자 요청 시 돌고 결과는 MySQL 에 쌓인다. 근거: ADR 029.
+    interval: ${SELFTEST_INTERVAL:PT1H}
+    # 무결성 기준값 파일. sha256sum 형식("<해시>  <절대경로>" 한 줄씩)이고 jar 와 설정 파일을 적는다.
+    # jar 밖(k8s ConfigMap/Secret 볼륨)에 둔다. 비면 무결성 항목은 SKIP 이다(로컬 개발).
+    integrity-baseline-file: ${INTEGRITY_BASELINE_FILE:}
+    # 자체시험이 새로 실패하면 알릴 Slack webhook. 비면 통보하지 않고 경고 로그와 운영 상태 화면에만 남는다.
+    notify-webhook-url: ${SELFTEST_WEBHOOK_URL:}
   geoip:
     db-path: ${GEOIP_DB_PATH:}           # GeoLite2-Country.mmdb 외부 경로. 비면 클래스패스 번들 사용, 둘 다 없으면 geo API 빈 배열

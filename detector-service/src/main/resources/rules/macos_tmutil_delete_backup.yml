@@ -1,0 +1,22 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_tmutil_delete_backup.yml (id 452df256-da78-427a-866f-49fa04417d74)
+# 바꾼 것: selection_img 에서 CommandLine|contains: 'tmutil' 대안을 뺐다. 파일 이름에 tmutil 이 든 mv, sed 가 오탐됐다(KISA 자체 시험 2026-11-10).
+title: Time Machine Backup Deletion Attempt Via Tmutil - MacOS
+id: 452df256-da78-427a-866f-49fa04417d74
+name: macos_tmutil_delete_backup
+status: test
+description: 'Detects deletion of local Time Machine backups via "tmutil" which might be a sign of ransomware'
+author: 'Pratinav Chandra'
+tags:
+  - attack.impact
+  - attack.t1490
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '/tmutil'
+  selection_cmd:
+    CommandLine|contains: 'delete'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

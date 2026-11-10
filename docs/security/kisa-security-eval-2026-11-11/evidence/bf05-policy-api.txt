@@ -1,0 +1,7 @@
+시험 시각 2026-11-11 06:30:21
+[1] GET 보안정책(admin) | HTTP 200 | {"maxLoginFailures":3,"lockMinutes":10,"idleMinutes":10}
+[2] PUT 범위 밖 {maxLoginFailures:6, lockMinutes:5, idleMinutes:10} | HTTP 400 | {"error":"maxLoginFailures 는 1~5 여야 합니다"}
+[3] PUT 범위 밖 {maxLoginFailures:5, lockMinutes:4, idleMinutes:10} | HTTP 400 | {"error":"lockMinutes 는 5~1440 여야 합니다"}
+[4] PUT 범위 밖 {maxLoginFailures:5, lockMinutes:5, idleMinutes:61} | HTTP 400 | {"error":"idleMinutes 는 1~60 여야 합니다"}
+[5] PUT 값 빠짐 {maxLoginFailures:5} | HTTP 400 | {"error":"lockMinutes 는 5~1440 여야 합니다"}
+[6] GET 보안정책(범위 밖 요청 뒤에도 그대로인지) | HTTP 200 | {"maxLoginFailures":3,"lockMinutes":10,"idleMinutes":10}

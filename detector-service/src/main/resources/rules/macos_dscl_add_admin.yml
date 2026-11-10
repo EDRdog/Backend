@@ -1,0 +1,27 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_dscl_add_user_to_admin_group.yml (id b743623c-2776-40e0-87b1-682b975d0ca5)
+# 바꾼 것: 없음.
+title: User Added To Admin Group Via Dscl
+id: b743623c-2776-40e0-87b1-682b975d0ca5
+name: macos_dscl_add_admin
+status: test
+description: 'Detects attempts to create and add an account to the admin group via "dscl"'
+author: 'Sohan G (D4rkCiph3r)'
+tags:
+  - attack.persistence
+  - attack.initial-access
+  - attack.privilege-escalation
+  - attack.stealth
+  - attack.t1078.003
+logsource:
+  category: process_creation
+detection:
+  selection: # adds to admin group
+    Image|endswith: '/dscl'
+    CommandLine|contains|all:
+      - ' -append '
+      - ' /Groups/admin '
+      - ' GroupMembership '
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

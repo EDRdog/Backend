@@ -1,17 +1,28 @@
 package com.edrdog.apiservice.tenant.web;
 
+import com.edrdog.apiservice.access.AccessInterceptor;
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
+import com.edrdog.apiservice.audit.AuditActor;
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.tenant.TenantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,16 +39,19 @@ public class TenantController {
 
     private final TenantService tenants;
     private final AuthService auth;
+    private final AuditService audit;
     private final String internalKey;
 
-    public TenantController(TenantService tenants, AuthService auth,
+    public TenantController(TenantService tenants, AuthService auth, AuditService audit,
                             @Value("${edrdog.internal.key}") String internalKey) {
         this.tenants = tenants;
         this.auth = auth;
+        this.audit = audit;
         this.internalKey = internalKey;
     }
 
     @Operation(summary = "webhook 등록", description = "로그인 유저(Bearer)의 tenant 에 Slack webhook URL 을 저장한다.")
+    @RequiresRole(Role.ADMIN)
     @PutMapping("/api/tenant/webhook")
     public WebhookResponse setWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -47,7 +61,19 @@ public class TenantController {
         return new WebhookResponse(principal.tenantId(), req.webhookUrl());
     }
 
+    @Operation(summary = "webhook 삭제", description = "로그인 유저(Bearer)의 tenant 에 저장된 Slack webhook URL 을 비운다(204). 이미 비어 있어도 204. webhook_change 감사기록이 남는다.")
+    @RequiresRole(Role.ADMIN)
+    @DeleteMapping("/api/tenant/webhook")
+    public ResponseEntity<Void> clearWebhook(
+            @RequestAttribute(AccessInterceptor.PRINCIPAL) Principal principal, HttpServletRequest http) {
+        tenants.clearWebhook(principal.tenantId());
+        audit.record(AuditEntry.user(principal, AuditType.WEBHOOK_CHANGE, "tenant", AuditResult.SUCCESS,
+                "remove", http.getRemoteAddr()));
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "내 webhook 조회", description = "로그인 유저(Bearer)의 tenant 에 저장된 webhook URL 을 조회한다.")
+    @RequiresRole(Role.ADMIN)
     @GetMapping("/api/tenant/webhook")
     public WebhookResponse getWebhook(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -57,6 +83,7 @@ public class TenantController {
     }
 
     @Operation(summary = "enroll secret 발급/회전", description = "로그인 유저(Bearer)의 tenant 에 enroll secret 을 새로 발급한다. 엔드포인트 에이전트 설정의 enroll_secret 에 넣는다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/tenant/enroll-secret")
     public EnrollSecretResponse rotateEnrollSecret(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -66,6 +93,7 @@ public class TenantController {
     }
 
     @Operation(summary = "내 enroll secret 조회", description = "로그인 유저(Bearer)의 tenant 에 발급된 enroll secret 을 조회한다. 미발급이면 null.")
+    @RequiresRole(Role.ADMIN)
     @GetMapping("/api/tenant/enroll-secret")
     public EnrollSecretResponse getEnrollSecret(
             @RequestHeader(name = "Authorization", required = false) String authorization) {
@@ -92,7 +120,12 @@ public class TenantController {
             @RequestBody ResolveTenantRequest req) {
         requireInternalKey(internalKeyHeader);
         // 못 찾은 이유(시크릿이 빈 값인지 틀린 값인지)는 알려주지 않는다. 대입 시도에 힌트가 된다.
-        return tenants.resolveTenant(req.enrollSecret())
+        var tenantId = tenants.resolveTenant(req.enrollSecret());
+        // enroll 결과 감사기록. api-service 가 아는 건 시크릿이 맞았는지뿐이라 host 는 모른다. 시크릿 값은 남기지 않는다.
+        audit.record(new AuditEntry(null, tenantId.orElse(null), AuditActor.AGENT, null, "unknown",
+                AuditType.AGENT_ENROLL, null, tenantId.isPresent() ? AuditResult.SUCCESS : AuditResult.FAILURE,
+                null, null));
+        return tenantId
                 .map(id -> ResponseEntity.ok(new ResolveTenantResponse(id)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

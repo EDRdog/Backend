@@ -75,7 +75,7 @@ class OperationsHealthApiIntegrationTest {
     private String signup(String email) throws Exception {
         MvcResult res = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         return om.readTree(res.getResponse().getContentAsString()).get("token").asText();
@@ -93,6 +93,16 @@ class OperationsHealthApiIntegrationTest {
                 .andExpect(jsonPath("$.dependencies[?(@.name=='clickhouse')].status").value("up"))
                 .andExpect(jsonPath("$.dependencies[?(@.name=='mysql')].status").value("up"))
                 .andExpect(jsonPath("$.checkedAt").isNumber());
+    }
+
+    @Test
+    void selfTestDependencyIsListedWithTheLatestRunStatus() throws Exception {
+        // 기동 시 자체시험이 이미 한 번 돌았고, 로컬 기본 설정에서는 실패 항목이 없어 up 이다.
+        String token = signup("ops-selftest@edrdog.com");
+
+        mvc.perform(get("/api/operations/health").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dependencies[?(@.name=='selftest')].status").value("up"));
     }
 
     @Test

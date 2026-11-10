@@ -39,6 +39,14 @@ spec:
             # 로그도 에이전트가 보낸다(그래서 Alloy 를 뺐다). 기본값에 기대지 않고 명시한다.
             - name: NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED
               value: "true"
+            # 단일 이벤트 룰 파일 위치. ConfigMap(detector-rules)을 마운트하고 30초마다 다시 읽는다.
+            # 못 읽으면 이미지에 든 번들 룰로 돈다. 룰만 바꿀 때는 재배포가 필요 없다.
+            - name: DETECTION_RULES_DIR
+              value: /etc/edrdog/rules
+          volumeMounts:
+            - name: rules
+              mountPath: /etc/edrdog/rules
+              readOnly: true
           # 경로를 그룹별로 나눠야 Kafka Streams 항목이 readiness 에만 걸린다(이슈 #214).
           # 루트 /actuator/health 를 그대로 두면 Streams 가 죽어도 liveness 까지 DOWN 이 되어 재시작 루프에 빠진다.
           # 뉴렐릭 자바 에이전트가 기동에 시간을 얹어서 liveness(30s + 20s*3)가 먼저 파드를 죽였다(#226).
@@ -72,6 +80,12 @@ spec:
               # api 472Mi, detector 468Mi 로 상한의 90%를 넘겼다. 늘어난 건 힙이 아니라 비힙
               # (에이전트, 메타스페이스, 스레드)이라 -Xmx 로 눌러도 안 줄어든다.
               memory: 1Gi
+      volumes:
+        # optional: ConfigMap 이 아직 없어도 파드는 뜬다(번들 룰로 시작). 룰 변경이 배포를 막지 않게 한다.
+        - name: rules
+          configMap:
+            name: detector-rules
+            optional: true
 ---
 apiVersion: v1
 kind: Service

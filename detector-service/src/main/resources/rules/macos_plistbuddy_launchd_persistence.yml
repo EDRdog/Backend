@@ -1,0 +1,28 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_persistence_via_plistbuddy.yml (id 65d506d3-fcfe-4071-b4b2-bcefe721bbbb)
+# 바꾼 것: level 을 high 에서 medium 으로 낮췄다(알림만).
+title: Potential Persistence Via PlistBuddy
+id: 65d506d3-fcfe-4071-b4b2-bcefe721bbbb
+name: macos_plistbuddy_launchd_persistence
+status: test
+description: 'Detects potential persistence activity using LaunchAgents or LaunchDaemons via the PlistBuddy utility'
+author: 'Sohan G (D4rkCiph3r)'
+tags:
+  - attack.persistence
+  - attack.t1543.001
+  - attack.t1543.004
+  - attack.privilege-escalation
+logsource:
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: '/PlistBuddy'
+    CommandLine|contains|all:
+      - 'RunAtLoad'
+      - 'true'
+    CommandLine|contains:
+      - 'LaunchAgents'
+      - 'LaunchDaemons'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: medium
