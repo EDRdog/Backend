@@ -136,7 +136,10 @@ class BundledRulesTest {
                     List.of(proc("xattr", "/usr/bin/xattr -l /Users/a/file"))),
             c("MACOS_TMUTIL_DELETE_BACKUP", Alert.SEV_MEDIUM,
                     List.of(proc("tmutil", "/usr/bin/tmutil delete /Volumes/Backup/2026-11-01")),
-                    List.of(proc("tmutil", "/usr/bin/tmutil listbackups"))),
+                    // 파일 이름에 tmutil, delete 가 들어 있을 뿐인 명령 (KISA 자체 시험 2026-11-10 실제 오탐)
+                    List.of(proc("tmutil", "/usr/bin/tmutil listbackups"),
+                            proc("mv", "/bin/mv D08-tmutil-delete.sh D08.sh"),
+                            proc("sed", "/usr/bin/sed -n s/^# id: //p /x/scenarios/D08-tmutil-delete.sh"))),
             c("MACOS_SYSADMINCTL_ADD_ADMIN", Alert.SEV_MEDIUM,
                     List.of(proc("sysadminctl", "/usr/sbin/sysadminctl -addUser bob -admin -password <redacted>"),
                             proc("sysadminctl", "/usr/sbin/sysadminctl -addUser bob -password <redacted> -admin")),

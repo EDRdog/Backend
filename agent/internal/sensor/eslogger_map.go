@@ -250,16 +250,46 @@ func eslUnderWatch(p string, watchPaths []string) bool {
 
 // ExpandWatchPaths 는 서버가 내려준 감시 경로의 ~ 를 실제 홈 디렉터리로 바꾼다.
 // 커널이 주는 경로는 언제나 절대 경로라 펴 두지 않으면 어떤 파일 이벤트도 걸리지 않는다.
+// root 데몬(LaunchDaemon)은 HOME 이 없고 자기 홈도 사용자 홈이 아니라 /Users 아래 모든 홈으로 편다(KISA 자체 시험 D03).
+// ponytail: 기동 시점의 홈만 본다. 나중에 생긴 계정은 에이전트를 재시작해야 감시된다.
 func ExpandWatchPaths(paths []string) []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
+	var homes []string
+	if os.Geteuid() == 0 {
+		homes = userHomes("/Users")
+	} else if home, err := os.UserHomeDir(); err == nil {
+		homes = []string{home}
 	}
+	return expandWatchPaths(paths, homes)
+}
+
+// expandWatchPaths 는 ~ 로 시작하는 경로를 홈마다 하나씩 편다. 홈을 모르면 손대지 않는다.
+func expandWatchPaths(paths, homes []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
-		out = append(out, eslExpandHome(p, home))
+		if !strings.HasPrefix(p, "~") || len(homes) == 0 {
+			out = append(out, p)
+			continue
+		}
+		for _, h := range homes {
+			out = append(out, eslExpandHome(p, h))
+		}
 	}
 	return out
+}
+
+// userHomes 는 root 아래 사용자 홈 디렉터리를 돌려준다. Shared 와 숨김 항목은 사용자 홈이 아니다.
+func userHomes(root string) []string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var homes []string
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != "Shared" && !strings.HasPrefix(e.Name(), ".") {
+			homes = append(homes, path.Join(root, e.Name()))
+		}
+	}
+	return homes
 }
 
 // eslExpandHome 은 ~ 로 시작하는 경로 하나를 편다.

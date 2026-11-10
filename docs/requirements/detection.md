@@ -30,6 +30,7 @@
 | DET-24 | 룰 위치의 같은 문제는 상태가 바뀔 때만 에러로 남는다(없는 ConfigMap 이 로그를 쌓지 않는다) | `DataRulesTest.sameProblem_isLoggedOncePerStateChange` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-25 | 판정 중 예외를 던지는 룰은 건너뛰고 나머지 룰은 판정된다 | `RulesDataRulesTest.throwingRule_isSkipped` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-26 | 기본 로케일에 상관없이 대소문자 비교와 ruleId 가 같다 | `SigmaParserTest.caseHandling_ignoresDefaultLocale` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-27 | R3 는 실행 대상(명령의 첫 토큰, 인터프리터가 읽는 스크립트 파일)만 보고, 인자로만 나온 임시 경로에는 걸리지 않는다 | `RulesTest.r3_tempPathAsPlainArgument_noAlert`, `RulesTest.r3_nestedExecutionTarget_alerts`, `RulesTest.r3_realSystemTempPath_stillAlerts` | `docs/design-docs/decisions/027-r3-checks-execution-target-only.md` | 자동 |
 
 ## 알림 억제
 

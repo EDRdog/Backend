@@ -24,8 +24,6 @@
 
 | 항목 | 위치 | 영향 | 발견일 |
 |---|---|---|---|
-| macOS 에서 `~/Library/LaunchAgents` 감시가 안 된다 | `agent/internal/sensor/eslogger_map.go` ExpandWatchPaths, LaunchDaemon plist | 데몬에 `HOME` 이 없어 `~` 가 펴지지 않고 커널의 절대 경로와 맞지 않는다. 사용자 LaunchAgents 지속성이 수집 0건(KISA 자체 시험 D03, `docs/security/detection-test-2026-11-10/`) | 2026-11-10 |
-| 명령행 부분 문자열 규칙이 파일 이름·임시 경로 개발 작업에 걸린다 | `k8s/detector-rules.yaml` MACOS_TMUTIL_DELETE_BACKUP, 코드 룰 SCRIPT_FROM_TEMP_PATH | `mv D08-tmutil-delete.sh ...` 와 `/tmp` venv 의 `pip install` 이 알림이 됐다. 실행 파일 이름(argv0)까지 보도록 좁혀야 한다 | 2026-11-10 |
 | 격리(isolate)가 구현돼 있지 않다 | `ACTION_ISOLATE` 상수만 존재 | 대응 수단이 프로세스 종료 하나뿐이다. 관리 채널 예외와 자동 해제 타이머가 함께 있어야 안전해서 미뤘다 | 2026-10-04 |
 | Windows 에이전트를 x64 데스크톱 Windows 에서 끝까지 돌려 보지 않았다 | `agent/internal/sensor/etw_windows.go`, `packaging/install-windows.ps1` | Windows 11 ARM64 VM(UTM, 26300.9711)에서는 다섯 종이 서버까지 왔다(2026-11-11, ADR 025). `packaging/install-windows.ps1` 설치와 `-service` 경로, SCM 재시작, 재부팅 후 기동, kill 도 같은 VM 에서 봤다. amd64 빌드는 ARM64 Windows 의 x64 에뮬레이션에서 같은 시험을 통과했고, x64 Windows Server 2025(GitHub Actions 러너, 26100)에서는 `TestETWLive` 를 한 번 돌려 다섯 종과 짧은 프로세스 명령행 50/50 을 확인했다(2026-11-11, 서버 없이 센서까지만, CI 잡으로는 두지 않음). x64 데스크톱 Windows 에서 서버 전송, kill, 서비스 설치까지 본 적은 없다. IPv6, 서버가 내려주는 설치 스크립트는 아직이다. Defender 가 pktmon 을 막는지는 짧게 몇 번 돌려 본 것뿐이다 | 2026-10-04 |
 | 따옴표와 쉼표로 붙은 비밀값 옵션은 가려지지 않는다 | 에이전트 명령행 가림 처리 | PowerShell `-ArgumentList "-Password","hunter2"` 형태의 값이 그대로 서버까지 갔다(ARM64 VM). `-Password hunter2` 처럼 띄어 쓴 형태는 가려진다 | 2026-11-11 |
