@@ -1,0 +1,31 @@
+[1] 로그인 이메일 300자 | email = a 300개 + @example.com, password x1 | 400 | {"error":"email 값이 너무 길거나 허용되지 않는 문자가 있습니다"}
+[2] 로그인 이메일 제어문자 \u0000 | email = "h19\u0000@example.com" | 400 | {"error":"email 값이 너무 길거나 허용되지 않는 문자가 있습니다"}
+[3] 로그인 이메일 제어문자 \n | email = "h19\n@example.com" | 400 | {"error":"email 값이 너무 길거나 허용되지 않는 문자가 있습니다"}
+[4] 로그인 비밀번호 1000자 | password = p 1000개 | 400 | {"error":"password 값이 너무 길거나 허용되지 않는 문자가 있습니다"}
+[5] 가입 orgName 200자 | orgName = o 200개 | 400 | {"error":"orgName 값이 너무 길거나 허용되지 않는 문자가 있습니다"}
+[6] 가입 이메일 빈 문자열 | email = "" | 400 | {"error":"이메일 형식이 올바르지 않습니다"}
+[7] 가입 본문이 JSON 아님 | body = not-json | 400 | {"error":"요청 본문 형식이 올바르지 않습니다"}
+[준비] 로그인용 계정 생성 | h19-1794345954@example.com, password (규칙 충족 값, 생략) | 201 | {"token":"(토큰 생략)","userId":8,"tenantId":6,"email":"h19-1794345954@example.com","role":"admin","mustChangePassword":false}
+[8] 보안정책 범위 초과 | PUT {maxLoginFailures:99, lockMinutes:1, idleMinutes:999} | 400 | {"error":"maxLoginFailures 는 1~5 여야 합니다"}
+[9] 보안정책 필드 누락 | PUT {maxLoginFailures:3} | 400 | {"error":"lockMinutes 는 5~1440 여야 합니다"}
+[10] 보안정책 타입 오류 | PUT {maxLoginFailures:"abc", lockMinutes:5, idleMinutes:10} | 400 | {"error":"요청 본문 형식이 올바르지 않습니다"}
+[11] 감사로그 limit 과대 | GET /api/audit?limit=99999 | 200 | [{"id":118,"ts":1794345957620,"tenantId":6,"actorType":"user","actorUserId":8,"actor":"h19-1794345954@example.com","type":"signup","target":"h19-1794345954@example.com","result":"success","detail":null,"ip":"0:0:0:0:0:0:0:1"},{"id":113,"ts":1794345950016,"tenantId":null,"actorType":"system","actorUs
+[12] 감사로그 offset 음수 | GET /api/audit?offset=-5 | 400 | {"error":"offset 은 0..10000 여야 합니다: -5"}
+[13] 감사로그 order 잘못된 값 | GET /api/audit?order=sideways | 400 | {"error":"order 는 asc 또는 desc 여야 합니다: sideways"}
+[14] 감사로그 from 숫자 아님 | GET /api/audit?from=notanumber | 400 | {"error":"파라미터 형식이 올바르지 않습니다: from"}
+[15] 관리자 IP CIDR 거부 기대 | POST /api/tenant/admin-ips {"ip":"10.0.0.0/8"} | 401 | {"error":"유효한 X-API-Key 가 필요합니다"}
+[16] 관리자 IP 와일드카드 거부 기대 | POST /api/tenant/admin-ips {"ip":"1.2.3.*"} | 401 | {"error":"유효한 X-API-Key 가 필요합니다"}
+[17] 관리자 IP 도메인 거부 기대 | POST /api/tenant/admin-ips {"ip":"example.com"} | 401 | {"error":"유효한 X-API-Key 가 필요합니다"}
+요약 (a) 응답 본문에 Exception/at com./at org./stacktrace/trace 포함: 0개
+요약 (b) 5xx 상태: 0개
+
+[보충 2026-11-11 06:38:09] 위 [15]~[17] 은 X-API-Key 가 없어 401 로 막힌 관리 IP 입력 검증을 X-API-Key(값 생략)와 세션 토큰을 함께 보내 다시 시험했다. 조직의 허용 목록은 비어 있었다.
+[20] 관리 IP 입력 CIDR 10.0.0.0/8 | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[21] 관리 IP 입력 와일드카드 1.2.3.* | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[22] 관리 IP 입력 도메인 example.com | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[23] 관리 IP 입력 범위 1.2.3.4-1.2.3.9 | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[24] 관리 IP 입력 여러 개 10.0.0.1,10.0.0.2 | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[25] 관리 IP 입력 길이 초과(300자) | HTTP 400 | {"error":"IP 는 단일 주소(IPv4 또는 IPv6)만 등록할 수 있습니다. 범위, CIDR, 와일드카드, 이름은 안 됩니다"}
+[26] 관리 IP 입력 제어문자 포함(10.0.0.1 + 개행) | HTTP 409 (개행은 앞뒤 공백으로 잘려 유효한 IP 로 읽혔고, 처음 등록하는 IP 가 본인 IP 가 아니라서 거부됐다. 목록에 등록되지 않았다)  | {"error":"처음 등록하는 IP 는 지금 접속한 IP 여야 합니다. 아니면 이 조직 계정이 모두 잠깁니다"}
+[27] 참고: GET /api/audit?limit=99999 는 오류 없이 200 이다. 서버가 한 번에 돌려주는 개수를 상한 1000 으로 맞춘다(QueryGuards.clampLimit). 이번 응답 건수 168건, 헤더 X-Has-More=false
+요약(보충 포함): 5xx 0개. 관리 IP 입력 7건 중 6건은 형식 검증으로 400, 1건은 본인 IP 규칙으로 409. 등록된 것은 없다.

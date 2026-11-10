@@ -1,0 +1,9 @@
+시각 2026-11-11 07:09:59 tenant 1(dettest) admin. X-API-Key 값은 적지 않는다. #324 의 webhook 비우기 API
+[1] 비우기 전 GET /api/tenant/webhook | HTTP 200 | {"tenantId":1,"webhookUrl":"https://localhost:9987/hook"}
+[2] DELETE /api/tenant/webhook | HTTP 204 | ''
+[3] 비운 뒤 GET /api/tenant/webhook | HTTP 200 | {"tenantId":1,"webhookUrl":null}
+[4] 이미 빈 상태에서 다시 DELETE | HTTP 204 | ''
+[5] 감사기록 webhook_change | HTTP 200
+    {"ts": 1794348599973, "actor": "dettest@local.test", "type": "webhook_change", "result": "success", "detail": "remove", "target": "tenant"}
+    {"ts": 1794348599924, "actor": "dettest@local.test", "type": "webhook_change", "result": "success", "detail": "remove", "target": "tenant"}
+[6] 참고: 세션 없이 DELETE 는 | 401

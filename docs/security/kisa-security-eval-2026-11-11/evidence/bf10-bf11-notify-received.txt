@@ -1,0 +1,4 @@
+2026-11-10T22:03:45.973514Z POST /hook 
+2026-11-10T22:05:45.885958Z POST /hook {"text":"[EDRdog] 에이전트 무결성 검증 실패: kisa-eval-mac (binary_integrity=ok(sha256=2cface0652b45f937acb6084c117ad8cccf0f09c43459dc805282b837d6cd3bb); config_integrity=fail(기준값과 다르다 (기준 9385bbd089c2b0afec48d55ef08982616578d1416e92aa508cdc78afc7b7a7d9, 현재 4c3f1b738574c371007e50dafc64f346e6574b799de19ef81ca72269c43488cc)))"}
+2026-11-10T22:06:45.903451Z POST /hook {"text":"[EDRdog] 에이전트 무결성 검증 회복: kisa-eval-mac"}
+2026-11-10T22:07:18.238139Z POST /server {"text":"[EDRDOG] 서버 자체시험 실패 (MANUAL): <scratchpad>/kisa-eval/api-service.jar"}

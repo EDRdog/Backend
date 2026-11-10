@@ -1,0 +1,14 @@
+시험 시각 2026-11-11 06:30:40  대상: viewer 역할 계정(forcev). admin 이 아니면 403 이고 감사기록 access_denied 가 남아야 한다.
+GET /api/alerts (viewer 허용) | HTTP 200 | []
+GET /api/hosts (viewer 허용) | HTTP 200 | []
+GET /api/audit | HTTP 403 | {"error":"권한이 없습니다"}
+GET /api/operations/selftest | HTTP 403 | {"error":"권한이 없습니다"}
+POST /api/operations/selftest | HTTP 403 | {"error":"권한이 없습니다"}
+GET /api/auth/security-policy | HTTP 403 | {"error":"권한이 없습니다"}
+PUT /api/auth/security-policy | HTTP 403 | {"error":"권한이 없습니다"}
+POST /api/alerts/1/respond (대응 kill) | HTTP 403 | {"error":"권한이 없습니다"}
+PATCH /api/alerts/1 (트리아지) | HTTP 403 | {"error":"권한이 없습니다"}
+GET /api/tenant/admin-ips | HTTP 403 | {"error":"권한이 없습니다"}
+POST /api/tenant/admin-ips | HTTP 403 | {"error":"권한이 없습니다"}
+POST /api/tenant/users | HTTP 403 | {"error":"권한이 없습니다"}
+GET /api/tenant/enroll-secret | HTTP 403 | {"error":"권한이 없습니다"}

@@ -1,0 +1,4 @@
+시각 2026-11-11 06:46:14 외부 연동(Slack webhook) 주소는 https 만 받는지
+PUT /api/tenant/webhook {"webhookUrl":"http://127.0.0.1:9987/slack"} | HTTP 400 | {"error":"webhook URL 은 https:// 로 시작해야 합니다"}
+PUT /api/tenant/webhook {"webhookUrl":""} | HTTP 400 | webhook URL 은 https:// 로 시작해야 합니다 (빈 값도 거절)
+저장된 값은 바뀌지 않았다(시험 뒤 DB 에서 NULL 로 되돌린 상태 유지).

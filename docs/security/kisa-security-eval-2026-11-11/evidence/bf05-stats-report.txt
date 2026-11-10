@@ -1,0 +1,5 @@
+시각 2026-11-11 07:09:01 조직 tenant 1(dettest, 평가용 에이전트와 2026-11-10 탐지 시험이 들어간 조직)
+GET /api/alerts/summary | HTTP 200 | {"total":55,"severity":{"critical":6,"high":0,"medium":49},"topThreats":[{"category":"실행","count":33},{"category":"기타","count":13},{"category":"악성코드","count":6},{"category":"지속성","count":2},{"category":"명령제어","count":1}]}
+GET /api/alerts | HTTP 200 | 55건, 가장 이른 2026-11-10 12:23:53 UTC, 가장 늦은 2026-11-10 18:41:36 UTC
+룰별 알림 수: SCRIPT_FROM_TEMP_PATH=33, MACOS_TMUTIL_DELETE_BACKUP=7, DOWNLOAD_AND_EXECUTE=6, FILE_IN_AUTORUN_PATH=2, MACOS_KEYCHAIN_DUMP=2, DNS_MEGA_USERSTORAGE=1, DNS_TOR_GATEWAY=1, MACOS_PLISTBUDDY_LAUNCHD_PERSISTENCE=1, MACOS_XATTR_REMOVE_QUARANTINE=1, WEAK_TLS_HANDSHAKE=1
+탐지 시험(D01~D10)이 노린 룰 10개 중 통계에 나온 것: 10/10
