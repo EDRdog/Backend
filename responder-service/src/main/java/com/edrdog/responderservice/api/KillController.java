@@ -27,13 +27,13 @@ public class KillController {
         this.executor = executor;
     }
 
-    /** host 의 target 프로세스 kill 명령을 넣는다. 명령이 나가면 202, 스위치·쿨다운·실패로 끝나면 200. */
+    /** tenant 의 host 에 target 프로세스 kill 명령을 넣는다. 명령이 나가면 202, 스위치·쿨다운·실패로 끝나면 200. */
     @PostMapping
     public ResponseEntity<ExecuteResult> kill(@RequestBody KillRequest req) {
-        if (isBlank(req.host()) || isBlank(req.target())) {
+        if (isBlank(req.tenantId()) || isBlank(req.host()) || isBlank(req.target())) {
             return ResponseEntity.badRequest().build();
         }
-        ExecuteResult result = executor.killProcess(req.host(), req.target());
+        ExecuteResult result = executor.killProcess(req.tenantId(), req.host(), req.target());
         HttpStatus status = ResponseExecutor.PENDING.equals(result.status()) ? HttpStatus.ACCEPTED : HttpStatus.OK;
         return ResponseEntity.status(status).body(result);
     }
@@ -48,7 +48,7 @@ public class KillController {
         return s == null || s.isBlank();
     }
 
-    /** kill 트리거 요청 본문. */
-    public record KillRequest(String host, String target) {
+    /** kill 트리거 요청 본문. host 이름은 tenant 마다 겹칠 수 있어 tenantId 가 같이 와야 한다. */
+    public record KillRequest(String tenantId, String host, String target) {
     }
 }

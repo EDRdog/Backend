@@ -165,28 +165,31 @@ public class AlertController {
 
     @Operation(summary = "알림 실제 조치(kill)",
             description = "대시보드 실행 버튼용 반자동 조치. 로그인 유저의 tenant 가 소유한 알림일 때만(타 tenant 404) "
-                    + "그 알림의 host 를 대상으로 target 프로세스 kill 을 responder 에 위임한다. host 는 알림에서 가져오므로 "
-                    + "클라이언트가 지정할 수 없다. 명령이 나가면 202 와 status=PENDING, executionId 를 바로 돌려주고, "
+                    + "그 알림의 tenant·host 에 알림의 target 프로세스 kill 을 responder 에 위임한다. "
+                    + "tenant·host·target 은 전부 알림에서 가져오므로 클라이언트가 지정할 수 없다. "
+                    + "본문의 target 은 받기만 하고 쓰지 않는다. 알림에 target 이 없으면(대상 저장 전 알림) 400. "
+                    + "명령이 나가면 202 와 status=PENDING, executionId 를 바로 돌려주고, "
                     + "결과는 GET /{id}/respond/{executionId} 로 조회한다. 쿨다운·스위치 꺼짐·실패는 200 으로 끝난다. "
                     + "실제 kill 실행 여부는 responder 실행 스위치(RESPONDER_EXECUTE_ENABLED)에 달려 있다.")
     @PostMapping("/{id}/respond")
     public ResponseEntity<KillResult> respond(
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable String id,
-            @RequestBody RespondRequest request) {
+            @RequestBody(required = false) RespondRequest ignored) {
         String tenantId = currentTenantId(authorization);
-        if (request == null || request.target() == null || request.target().isBlank()) {
-            throw AuthException.invalidInput("target 프로세스가 필요합니다");
+        AlertResponse alert = alerts.get(tenantId, id);   // 타 tenant 면 404, 통과하면 권위 있는 host·target 확보
+        // 본문의 target 을 쓰면 로그인한 사용자가 그 기기의 아무 프로세스나 죽인다. 알림에 없으면 메우지 않고 거절한다.
+        if (alert.target().isBlank()) {
+            throw AuthException.invalidInput("이 알림에는 종료 대상이 없습니다");
         }
-        AlertResponse alert = alerts.get(tenantId, id);   // 타 tenant 면 404, 통과하면 권위 있는 host 확보
-        KillResult result = responder.kill(alert.host(), request.target());
+        KillResult result = responder.kill(tenantId, alert.host(), alert.target());
         HttpStatus status = result.pending() ? HttpStatus.ACCEPTED : HttpStatus.OK;
         return ResponseEntity.status(status).body(result);
     }
 
     @Operation(summary = "알림 실제 조치 결과",
             description = "respond 가 돌려준 executionId 의 현재 결과. PENDING 이면 아직 에이전트 보고 전이다. "
-                    + "KILLED 가 되면 알림을 confirmed 로 넘긴다. 알림의 host 와 명령의 host 가 다르면 404.")
+                    + "KILLED 가 되면 알림을 confirmed 로 넘긴다. 알림과 명령의 tenant·host 가 다르면 404.")
     @GetMapping("/{id}/respond/{executionId}")
     public KillResult respondResult(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -194,9 +197,9 @@ public class AlertController {
             @PathVariable String executionId) {
         String tenantId = currentTenantId(authorization);
         AlertResponse alert = alerts.get(tenantId, id);   // 타 tenant 면 404
-        // host 를 맞춰 보지 않으면 명령 id 만으로 다른 기기의 결과를 보고 이 알림을 confirmed 로 밀 수 있다.
+        // tenant·host 를 맞춰 보지 않으면 명령 id 만으로 다른 기기(다른 조직의 같은 이름 기기 포함)의 결과를 보고 이 알림을 confirmed 로 밀 수 있다.
         KillResult result = responder.killResult(executionId)
-                .filter(r -> alert.host().equals(r.host()))
+                .filter(r -> tenantId.equals(r.tenantId()) && alert.host().equals(r.host()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         // 실패했는데 CONFIRMED 로 바꾸면 처리된 것처럼 보이므로, kill 성공했을 때만 갱신해 재조치를 막는다.
         if (result.killed() && !AlertStatus.CONFIRMED.equals(alert.status())) {
@@ -221,7 +224,7 @@ public class AlertController {
     public record TriageRequest(String status) {
     }
 
-    /** host 는 알림에서 가져오므로 클라이언트가 지정하지 않는다(target 만 받음). */
+    /** 따로 배포되는 프론트가 아직 target 을 실어 보내서 본문은 받는다. 값은 쓰지 않는다(대상은 알림에서 꺼낸다). */
     public record RespondRequest(String target) {
     }
 }

@@ -9,6 +9,7 @@ import java.util.Map;
  * alert 조회/상세/트리아지 응답. 목록과 상세가 같은 형태를 쓴다(matched 포함).
  * 판정기록은 ClickHouse 행(Map)으로 오고, status 는 오버레이(MySQL)에서 병합한 값을 넣는다.
  *
+ * @param target      detector 가 정한 조치 대상 프로세스명/경로 (대상을 저장하기 전 알림이면 빈 문자열)
  * @param domain      이 알림과 관련된 목적지 도메인 (판정 근거 중 관측된 것, 없으면 빈 문자열)
  * @param destIp      이 알림과 관련된 목적지 IP (출처는 domain 과 같다)
  * @param sourceEvent 판정을 유발한 원본 이벤트 (목록이거나 못 찾았으면 null)
@@ -23,6 +24,7 @@ public record AlertResponse(
         String mitre,
         String severity,
         String action,
+        String target,
         long ts,
         String status,
         List<String> matched,
@@ -38,14 +40,14 @@ public record AlertResponse(
     public static AlertResponse fromRow(Map<String, Object> row, String status, SourceEvent sourceEvent) {
         String ruleId = str(row, "rule_id");
         return new AlertResponse(str(row, "id"), str(row, "host"), ruleId, ThreatCatalog.threatName(ruleId),
-                str(row, "mitre"), str(row, "severity"), str(row, "action"), asLong(row, "ts"), status,
+                str(row, "mitre"), str(row, "severity"), str(row, "action"), str(row, "target"), asLong(row, "ts"), status,
                 matched(row), str(row, "domain"), str(row, "dest_ip"), sourceEvent, null);
     }
 
     /** 사건 id 를 얹은 사본. */
     // 조립을 웹 계층으로 미루는 장치다. 서비스끼리 alert ↔ incident 로 맞물리면 순환이다.
     public AlertResponse withIncidentId(String incidentId) {
-        return new AlertResponse(id, host, ruleId, threatName, mitre, severity, action, ts, status,
+        return new AlertResponse(id, host, ruleId, threatName, mitre, severity, action, target, ts, status,
                 matched, domain, destIp, sourceEvent, incidentId);
     }
 

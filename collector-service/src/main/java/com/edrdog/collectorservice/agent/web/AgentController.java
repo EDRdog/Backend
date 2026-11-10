@@ -42,7 +42,7 @@ public class AgentController {
         AgentNode node = authenticate(nodeKey);
         return new HeartbeatResponse(
                 SensorConfig.forPlatform(node.getPlatform()),
-                responder.pendingCommands(node.getHostIdentifier()));
+                responder.pendingCommands(String.valueOf(node.getTenantId()), node.getHostIdentifier()));
     }
 
     @PostMapping("/events")
@@ -58,8 +58,10 @@ public class AgentController {
     public void commandResult(
             @RequestHeader(name = NODE_KEY_HEADER, required = false) String nodeKey,
             @RequestBody CommandResultRequest req) {
-        authenticate(nodeKey);
-        responder.reportCommandResult(req.commandId(), req.status(), req.message());
+        AgentNode node = authenticate(nodeKey);
+        // 보고한 노드를 같이 넘겨야 responder 가 남의 명령에 온 보고를 걸러낸다
+        responder.reportCommandResult(String.valueOf(node.getTenantId()), node.getHostIdentifier(),
+                req.commandId(), req.status(), req.message());
     }
 
     /** node_key 를 풀어 노드를 돌려준다. 유효하지 않으면 401(AuthExceptionHandler 가 매핑). */

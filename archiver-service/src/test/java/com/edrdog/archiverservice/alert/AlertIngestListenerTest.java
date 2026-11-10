@@ -61,7 +61,7 @@ class AlertIngestListenerTest {
     }
 
     private Alert alert(String tenantId, String host, String ruleId) {
-        return new Alert(host, ruleId, "T1059", "HIGH", "block", 1000L, List.of(), tenantId, "", "");
+        return new Alert(host, ruleId, "T1059", "HIGH", "block", 1000L, List.of(), tenantId, "/tmp/evil.sh", "", "");
     }
 
     private String json(Alert alert) throws Exception {

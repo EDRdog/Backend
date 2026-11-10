@@ -25,6 +25,10 @@ public class AgentCommand {
     @Column(length = 36)
     private String id;
 
+    // nullable 이라 ddl-auto=update 가 기존 행을 건드리지 않는다. tenant 없는 옛 행은 어느 조회에도 안 걸린다.
+    @Column(length = 64)
+    private String tenantId;
+
     @Column(nullable = false)
     private String host;
 
@@ -46,8 +50,10 @@ public class AgentCommand {
     protected AgentCommand() {
     }
 
-    public AgentCommand(String id, String host, String type, String target, String status, Instant createdAt) {
+    public AgentCommand(String id, String tenantId, String host, String type, String target, String status,
+                        Instant createdAt) {
         this.id = id;
+        this.tenantId = tenantId;
         this.host = host;
         this.type = type;
         this.target = target;
@@ -62,6 +68,10 @@ public class AgentCommand {
 
     public String getId() {
         return id;
+    }
+
+    public String getTenantId() {
+        return tenantId;
     }
 
     public String getHost() {

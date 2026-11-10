@@ -53,33 +53,33 @@ public class ResponseExecutor {
         this.clock = clock;
     }
 
-    /** host 의 target 프로세스 kill 명령을 넣고 바로 돌아온다. 실행 스위치·쿨다운을 통과할 때만 넣는다. */
-    public ExecuteResult killProcess(String host, String target) {
+    /** tenant 의 host 에 target 프로세스 kill 명령을 넣고 바로 돌아온다. 실행 스위치·쿨다운을 통과할 때만 넣는다. */
+    public ExecuteResult killProcess(String tenantId, String host, String target) {
         // 이 스위치를 지우면 켜기 전에 실제 kill 이 나간다. 기본값은 false 다.
         if (!enabled) {
             log.info("[EXECUTE-DISABLED] trigger=response host={} target={} (실행 스위치 꺼짐, 아무것도 안 함)", host, target);
-            return new ExecuteResult(host, target, "DISABLED", null);
+            return new ExecuteResult(tenantId, host, target, "DISABLED", null);
         }
         try {
             // 이 검사를 빼면 같은 호스트에 재조치가 연달아 나간다.
             // ponytail: 검사와 저장 사이가 원자적이지 않아 두 인스턴스가 동시에 통과할 수 있다. 사람이 누르는 경로라 창이 좁다. 문제가 되면 host 별 락 행으로 바꾼다
-            if (commands.dispatchedSince(host, clock.instant().minus(cooldown))) {
+            if (commands.dispatchedSince(tenantId, host, clock.instant().minus(cooldown))) {
                 log.info("[EXECUTE-COOLDOWN] trigger=response host={} target={} (쿨다운, 재조치 억제)", host, target);
-                return new ExecuteResult(host, target, "COOLDOWN", null);
+                return new ExecuteResult(tenantId, host, target, "COOLDOWN", null);
             }
-            String commandId = commands.dispatch(host, "kill_process", target);
+            String commandId = commands.dispatch(tenantId, host, "kill_process", target);
             log.info("[EXECUTE] trigger=response host={} target={} cmd={} (명령 대기)", host, target, commandId);
-            return new ExecuteResult(host, target, PENDING, commandId);
+            return new ExecuteResult(tenantId, host, target, PENDING, commandId);
         } catch (Exception e) {
             log.error("[EXECUTE-FAILED] trigger=response host={} target={} err={}", host, target, e.toString());
-            return new ExecuteResult(host, target, "FAILED", null);
+            return new ExecuteResult(tenantId, host, target, "FAILED", null);
         }
     }
 
     /** 명령의 현재 결과. 모르는 id 면 빈 값. */
     public Optional<ExecuteResult> result(String commandId) {
         return commands.find(commandId)
-                .map(c -> new ExecuteResult(c.getHost(), c.getTarget(), statusOf(c), c.getId()));
+                .map(c -> new ExecuteResult(c.getTenantId(), c.getHost(), c.getTarget(), statusOf(c), c.getId()));
     }
 
     /** 아직 보고가 없으면 시한 안에는 PENDING, 넘겼으면 TIMEOUT. 보고가 있으면 그 결과. */

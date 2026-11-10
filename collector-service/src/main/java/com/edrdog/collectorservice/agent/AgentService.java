@@ -137,14 +137,14 @@ public class AgentService {
     }
 
     /**
-     * 이벤트 배열에 서버가 푼 tenantId 를 심고 검증을 통과한 것만 events 로 발행한다. 반환값은 발행 건수다.
+     * 이벤트 배열에 서버가 푼 tenantId·host 를 심고 검증을 통과한 것만 events 로 발행한다. 반환값은 발행 건수다.
      * 브로커 ack 를 전부 받아야 돌아온다. 하나라도 못 받으면 {@link PublishException}(503)이라 에이전트가 배치째 다시 보낸다.
      */
     public int publish(AgentNode node, JsonNode events) {
         String tenantId = String.valueOf(node.getTenantId());
         List<CompletableFuture<?>> sent = new ArrayList<>();
         int dropped = 0;
-        for (String raw : EventTagger.tag(tenantId, events, mapper)) {
+        for (String raw : EventTagger.tag(tenantId, node.getHostIdentifier(), events, mapper)) {
             Optional<Event> event = RawEventMapper.map(raw, mapper);
             if (event.isEmpty()) {
                 dropped++;
