@@ -231,7 +231,7 @@ EndpointSecurity API 를 직접 부르려면 애플의 entitlement 심사를 통
 
 | | 서버가 내려주는 것 | 에이전트가 하는 일 |
 |:---|:---|:---|
-| **macOS** | `~/Library/LaunchAgents` | `~` 를 실제 홈 디렉터리로 편다 (`ExpandWatchPaths`) |
+| **macOS** | `~/Library/LaunchAgents` | `~` 를 홈 디렉터리로 편다. root 데몬은 HOME 이 없어 `/Users` 아래 모든 사용자 홈마다 편다 (`ExpandWatchPaths`). 기동 뒤에 생긴 계정은 재시작해야 감시된다 |
 | **Windows** | `C:\Users\*\AppData\Roaming\...\Startup` | `*` 를 경로 한 단계와 맞춘다 (`matchesWatchPath`) |
 
 방식이 갈리는 이유는 커널이 주는 경로의 모양이 다르기 때문이다. macOS 는 절대 경로 하나로 오니

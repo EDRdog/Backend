@@ -349,15 +349,56 @@ class RulesTest {
     }
 
     @Test
-    @DisplayName("R3 양성: /private/tmp/ 는 macOS 의 진짜 시스템 임시 경로라 계속 잡는다 (실제 관측 사례)")
+    @DisplayName("R3 양성: /private/tmp/ 는 macOS 의 진짜 시스템 임시 경로라 계속 잡는다")
     void r3_realSystemTempPath_stillAlerts() {
-        // 배포 서버에서 관측된 개발 도구 노이즈지만 룰이 의도대로 동작한 것이다.
         // 여기를 빼면 공격자가 쓰는 바로 그 경로를 허용하게 된다.
+        // 임시 경로 venv 의 pip 도 임시 경로에 놓인 스크립트를 실제로 실행한 것이라 잡는다(KISA 자체 시험 2026-11-10 관측).
         List<String> observed = List.of(
-                "/bin/bash -c tsc --noEmit -p /private/tmp/claude-501/proj/scratchpad/tsconfig.check.json",
-                "/usr/bin/python3 - /private/tmp/claude-501/proj/scratchpad/typecheck/src/api/demo.ts");
+                "/bin/bash /private/tmp/x/run.sh",
+                "/usr/bin/python3 /private/tmp/claude-501/proj/scratchpad/venv/bin/pip install -q qrcode");
 
         for (String cmdline : observed) {
+            assertThat(Rules.evaluate(List.of(), script("sh", cmdline, 3000)))
+                    .as(cmdline)
+                    .isPresent()
+                    .get()
+                    .extracting(Alert::ruleId)
+                    .isEqualTo("SCRIPT_FROM_TEMP_PATH");
+        }
+    }
+
+    @Test
+    @DisplayName("R3 음성: 임시 경로가 실행 대상이 아니라 인자일 뿐이면 미판정 (KISA 자체 시험 실제 오탐)")
+    void r3_tempPathAsPlainArgument_noAlert() {
+        // 인자 전체를 보던 시절 venv 생성, -c 코드 속 경로, 설정 파일 인자가 전부 알림이 됐다.
+        List<String> observed = List.of(
+                "/usr/bin/python3 -m venv /private/tmp/claude-501/proj/scratchpad/venv",
+                "/usr/bin/python3.9 -c import sys; sys.path = ['/var/folders/y0/T/tmp2q/pip-21.2.4-py3-none-any.whl'] + sys.path",
+                "/bin/bash -c tsc --noEmit -p /private/tmp/claude-501/proj/scratchpad/tsconfig.check.json",
+                "/usr/bin/python3 - /private/tmp/claude-501/proj/scratchpad/typecheck/src/api/demo.ts",
+                "/bin/zsh -c cat /tmp/notes.txt");
+
+        for (String cmdline : observed) {
+            assertThat(Rules.evaluate(List.of(), script("sh", cmdline, 3000)))
+                    .as(cmdline)
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("R3 양성: 셸 -c 문자열, source, 래퍼, cmd /c, powershell -Command 안의 실행 대상도 본다")
+    void r3_nestedExecutionTarget_alerts() {
+        List<String> evasions = List.of(
+                "/bin/sh -c \"/tmp/evil.sh\"",
+                "/bin/bash -c \"cd / && /tmp/evil.sh\"",
+                "/bin/zsh -c source /tmp/evil.sh",
+                "/bin/sh -c nohup /tmp/evil.sh",
+                "/bin/sh -c env A=1 /tmp/evil.sh",
+                "cmd.exe /c C:\\Users\\v\\AppData\\Local\\Temp\\evil.bat",
+                "powershell -NoProfile -Command & 'C:\\Users\\v\\Downloads\\evil.ps1'",
+                "wscript.exe //B C:\\Users\\v\\Downloads\\evil.vbs");
+
+        for (String cmdline : evasions) {
             assertThat(Rules.evaluate(List.of(), script("sh", cmdline, 3000)))
                     .as(cmdline)
                     .isPresent()

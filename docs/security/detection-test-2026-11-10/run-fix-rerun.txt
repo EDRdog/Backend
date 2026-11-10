@@ -1,0 +1,10 @@
+결과 파일: /Users/dhkim/1Project/EDRdog/Backend-dettest-fix/dettest-20261110T182943Z.md
+[D02] 시작 18:29:43
+[D02] 수집=O 알림=SCRIPT_FROM_TEMP_PATH 응답=- 판정=탐지
+다음 시나리오까지 330s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[D03] 시작 18:35:18
+[D03] 수집=O 알림=FILE_IN_AUTORUN_PATH 응답=- 판정=탐지
+다음 시나리오까지 330s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[D08] 시작 18:40:51
+[D08] 수집=O 알림=MACOS_TMUTIL_DELETE_BACKUP 응답=- 판정=탐지
+끝. 결과: /Users/dhkim/1Project/EDRdog/Backend-dettest-fix/dettest-20261110T182943Z.md

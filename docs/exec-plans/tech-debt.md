@@ -24,8 +24,6 @@
 
 | 항목 | 위치 | 영향 | 발견일 |
 |---|---|---|---|
-| macOS 에서 `~/Library/LaunchAgents` 감시가 안 된다 | `agent/internal/sensor/eslogger_map.go` ExpandWatchPaths, LaunchDaemon plist | 데몬에 `HOME` 이 없어 `~` 가 펴지지 않고 커널의 절대 경로와 맞지 않는다. 사용자 LaunchAgents 지속성이 수집 0건(KISA 자체 시험 D03, `docs/security/detection-test-2026-11-10/`) | 2026-11-10 |
-| 명령행 부분 문자열 규칙이 파일 이름·임시 경로 개발 작업에 걸린다 | `k8s/detector-rules.yaml` MACOS_TMUTIL_DELETE_BACKUP, 코드 룰 SCRIPT_FROM_TEMP_PATH | `mv D08-tmutil-delete.sh ...` 와 `/tmp` venv 의 `pip install` 이 알림이 됐다. 실행 파일 이름(argv0)까지 보도록 좁혀야 한다 | 2026-11-10 |
 | 격리(isolate)가 구현돼 있지 않다 | `ACTION_ISOLATE` 상수만 존재 | 대응 수단이 프로세스 종료 하나뿐이다. 관리 채널 예외와 자동 해제 타이머가 함께 있어야 안전해서 미뤘다 | 2026-10-04 |
 | Windows ETW 센서가 실기기에서 검증되지 않았다 | `agent/internal/sensor/etw_windows.go`, `packaging/install-windows.ps1` | 크로스 컴파일과 단위 테스트까지만 통과했다. 확인 목록은 `agent/README.md` | 2026-10-04 |
 | 설치 스크립트의 지문 대조(Windows)가 실기기에서 돌지 않았다 | `api-service/.../install/windows.ps1`, `agent/packaging/install-windows.ps1` | 검증 콜백이 스크립트 변수(`$ServerCertSha256`, `$seen`)를 읽는다. 개발 기기에 PowerShell 이 없어 구문 검사도 못 했다. 틀리면 설치가 늘 멈춘다(고정은 안 되므로 TOFU 로 돌아가지는 않는다) | 2026-11-10 |

@@ -32,6 +32,6 @@
 - D04, D09, D10: 수집 칸 X 는 러너가 표식(MARK)을 찾지 못한 것이다. TLS·DNS 이벤트에는 명령행이 없어 표식이 남지 않는다. 알림이 났으므로 수집은 된 것으로 본다.
 - D01: 응답 NO_MATCH 는 에이전트 잘못이 아니다. `/tmp` 에 복사한 `/bin/sleep` 은 서명 검사로 macOS 가 실행 직후 SIGKILL 한다(직접 재현: 종료 코드 137). kill 명령이 닿았을 때 대상이 이미 없었다. 시나리오에 `codesign -f -s -`(임시 서명)를 넣고 D01 만 다시 돌려 `KILLED`(알림→조치 4초, 프로세스 소멸 확인)를 얻었다. `result-d01-rerun.md` 참고.
 - D03: 수집 0건. LaunchDaemon 에 HOME 이 없어 감시 경로 `~/Library/LaunchAgents` 의 `~` 가 펴지지 않는다(`agent/internal/sensor/eslogger_map.go` ExpandWatchPaths, `/Library/LaunchDaemons/com.edrdog.agent.plist` 에 EnvironmentVariables 없음).
-- 첫 실행(`run-aborted.log`)은 러너가 시나리오 헤더를 `sed` 로 읽어 명령행에 `D08-tmutil-delete.sh` 가 실리면서 MACOS_TMUTIL_DELETE_BACKUP 이 오탐해 중단했다. 파일 이름을 ID 만 남기고 헤더를 bash 로 읽게 고친 뒤 다시 돌렸다.
+- 첫 실행(`run-aborted.txt`)은 러너가 시나리오 헤더를 `sed` 로 읽어 명령행에 `D08-tmutil-delete.sh` 가 실리면서 MACOS_TMUTIL_DELETE_BACKUP 이 오탐해 중단했다. 파일 이름을 ID 만 남기고 헤더를 bash 로 읽게 고친 뒤 다시 돌렸다.
 
 보정 후 탐지율: 노린 기법 9/10 = 90%, 전체 16개 기준 9/16 = 56.3%.

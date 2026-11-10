@@ -170,7 +170,7 @@ public final class Rules {
 
     /** R3 T1059: 임시/다운로드 경로에서 실행된 스크립트 (저심각 point 룰). */
     private static Optional<Alert> scriptFromTempPath(Event current) {
-        if (!isScript(current) || !pathArgumentFromTempPath(current.getCmdline())) {
+        if (!isScript(current) || !executesFromTempPath(current.getCmdline())) {
             return Optional.empty();
         }
         return Optional.of(alertOf("SCRIPT_FROM_TEMP_PATH", "T1059", Alert.SEV_MEDIUM,
@@ -267,27 +267,144 @@ public final class Rules {
         return !tokens.isEmpty() && isTempOrDownloadPath(tokens.get(0));
     }
 
-    /** cmdline 에서 "실행 대상으로 보이는 경로 인자"가 임시·다운로드 경로인지 본다. */
-    private static boolean pathArgumentFromTempPath(String cmdline) {
+    /** 셸: -c 뒤가 명령 문자열이다. */
+    private static final Set<String> UNIX_SHELLS = Set.of("sh", "bash", "zsh", "dash", "ksh", "fish");
+
+    /** 셸이 아닌 인터프리터 (agent eslogger_map.go, etw_cmdline.go). python 은 버전이 붙어 접두사로 본다. */
+    private static final Set<String> INTERPRETERS = Set.of(
+            "osascript", "perl", "ruby", "node", "wscript", "cscript", "mshta");
+
+    /** 뒤에 오는 인자가 스크립트 파일이 아니라 코드·모듈 이름·표준입력인 인터프리터 옵션. */
+    private static final Set<String> INLINE_FLAGS = Set.of("-c", "-m", "-e", "-", "-encodedcommand", "-enc", "-ec");
+
+    /** 앞에 붙어 다른 명령을 실행하는 래퍼. 래퍼를 건너뛰지 않으면 nohup /tmp/evil.sh 로 회피된다. */
+    private static final Set<String> WRAPPERS = Set.of("exec", "nohup", "env", "sudo", "command", "nice", "time");
+
+    /** powershell 옵션 중 값을 하나 받는 것. 값을 스크립트로 읽으면 Bypass 가 실행 대상이 된다. */
+    private static final Set<String> PS_VALUE_FLAGS = Set.of(
+            "-executionpolicy", "-ep", "-windowstyle", "-w", "-version", "-inputformat", "-outputformat",
+            "-configurationname", "-workingdirectory", "-psconsolefile");
+
+    /** 실행되는 대상(명령의 첫 토큰, 인터프리터가 읽는 스크립트 파일)이 임시·다운로드 경로인지 본다. */
+    // 인자 전체를 보면 venv 생성, -c 코드 속 경로, 설정 파일 인자 같은 정상 개발 작업이 걸린다(KISA 자체 시험 2026-11-10).
+    private static boolean executesFromTempPath(String cmdline) {
         String c = lower(cmdline);
-        if (c == null) {
-            return false;
-        }
-        List<String> tokens = tokenize(c);
-        for (int i = 0; i < tokens.size(); i++) {
-            String token = tokens.get(i);
-            if (REDIRECTIONS.contains(token)) {
-                i++;            // 안 건너뛰면 리다이렉션 대상(>| /tmp/x)이 임시 경로라고 알림이 나간다
-                continue;
-            }
-            if (SEPARATORS.contains(token)) {
-                continue;
-            }
-            if (isTempOrDownloadPath(token)) {
-                return true;
+        return c != null && commandsFromTempPath(tokenize(c));
+    }
+
+    /** 명령 구분자로 나눈 명령마다 실행 대상을 본다. 구분자에서 멈추면 `true && /tmp/evil.sh` 로 회피된다. */
+    private static boolean commandsFromTempPath(List<String> tokens) {
+        List<String> argv = new ArrayList<>();
+        for (int i = 0; i <= tokens.size(); i++) {
+            String t = i < tokens.size() ? tokens.get(i) : null;
+            if (t == null || SEPARATORS.contains(t)) {
+                if (commandFromTempPath(argv)) {
+                    return true;
+                }
+                argv.clear();
+            } else if (REDIRECTIONS.contains(t)) {
+                i++;            // 리다이렉션 대상(>| /tmp/x)은 실행 대상이 아니다
+            } else {
+                argv.add(t);
             }
         }
         return false;
+    }
+
+    /** 명령 하나의 실행 대상을 본다. */
+    private static boolean commandFromTempPath(List<String> argv) {
+        if (argv.isEmpty()) {
+            return false;
+        }
+        String exe = argv.get(0);
+        if (isTempOrDownloadPath(exe)) {
+            return true;
+        }
+        String name = commandName(exe);
+        List<String> rest = argv.subList(1, argv.size());
+        if (name.equals("source") || name.equals(".")) {
+            return !rest.isEmpty() && isTempOrDownloadPath(rest.get(0));
+        }
+        if (name.equals("eval")) {
+            return commandsFromTempPath(retokenize(rest));
+        }
+        if (WRAPPERS.contains(name)) {
+            int i = 0;
+            while (i < rest.size() && (rest.get(i).startsWith("-") || rest.get(i).contains("="))) {
+                i++;
+            }
+            return commandFromTempPath(rest.subList(i, rest.size()));
+        }
+        if (name.equals("cmd")) {
+            for (int i = 0; i < rest.size(); i++) {
+                if (rest.get(i).equals("/c") || rest.get(i).equals("/k")) {
+                    return commandsFromTempPath(retokenize(rest.subList(i + 1, rest.size())));
+                }
+            }
+            return false;
+        }
+        if (name.equals("powershell") || name.equals("pwsh")) {
+            return powershellFromTempPath(rest);
+        }
+        // 인터프리터가 아닌 명령은 인자를 실행하지 않는다(tsc -p /tmp/x.json)
+        return isInterpreterName(name) && scriptArgumentFromTempPath(name, rest);
+    }
+
+    /** 스크립트 파일을 인자로 받아 실행하는 인터프리터인지. 에이전트가 script 로 올리는 목록과 같다. */
+    private static boolean isInterpreterName(String name) {
+        return UNIX_SHELLS.contains(name) || INTERPRETERS.contains(name) || name.startsWith("python");
+    }
+
+    /** 인터프리터가 읽는 스크립트 파일은 옵션을 건너뛴 첫 인자다. 셸 -c 뒤는 다시 명령으로 본다. */
+    private static boolean scriptArgumentFromTempPath(String name, List<String> args) {
+        for (int i = 0; i < args.size(); i++) {
+            String a = args.get(i);
+            if (a.equals("-c") && UNIX_SHELLS.contains(name)) {
+                return commandsFromTempPath(retokenize(args.subList(i + 1, args.size())));
+            }
+            if (INLINE_FLAGS.contains(a)) {
+                return false;
+            }
+            if (a.startsWith("-") || a.startsWith("//")) {
+                continue;       // 옵션(wscript 는 //B 처럼 두 개)
+            }
+            return isTempOrDownloadPath(a);
+        }
+        return false;
+    }
+
+    /** powershell: -File 값이 스크립트, -Command 뒤와 옵션 없는 첫 인자는 명령이다. */
+    private static boolean powershellFromTempPath(List<String> args) {
+        for (int i = 0; i < args.size(); i++) {
+            String a = args.get(i);
+            if (a.equals("-file") || a.equals("-f")) {
+                return i + 1 < args.size() && isTempOrDownloadPath(args.get(i + 1));
+            }
+            if (a.equals("-command") || a.equals("-c")) {
+                return commandsFromTempPath(retokenize(args.subList(i + 1, args.size())));
+            }
+            if (INLINE_FLAGS.contains(a)) {
+                return false;
+            }
+            if (PS_VALUE_FLAGS.contains(a)) {
+                i++;
+            } else if (!a.startsWith("-")) {
+                return commandsFromTempPath(retokenize(args.subList(i, args.size())));
+            }
+        }
+        return false;
+    }
+
+    /** 인용부호로 묶여 한 토큰이 된 명령 문자열을 다시 쪼갠다. */
+    private static List<String> retokenize(List<String> tokens) {
+        return tokenize(String.join(" ", tokens));
+    }
+
+    /** 경로와 .exe 를 뗀 명령 이름. */
+    private static String commandName(String exe) {
+        int slash = Math.max(exe.lastIndexOf('/'), exe.lastIndexOf('\\'));
+        String name = exe.substring(slash + 1);
+        return name.endsWith(".exe") ? name.substring(0, name.length() - 4) : name;
     }
 
     /** 공백으로 자르되 인용부호 구간은 한 토큰으로 유지한다. 공백으로만 자르면 공백 포함 경로를 아예 못 본다. */

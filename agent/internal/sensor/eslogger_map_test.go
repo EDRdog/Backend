@@ -462,3 +462,32 @@ func TestEslUnderWatchIgnoresTrailingSlash(t *testing.T) {
 		t.Error("빈 경로가 맞으면 안 된다")
 	}
 }
+
+// root 데몬은 HOME 이 없다. ~ 는 사용자 홈마다 하나씩 펴져야 사용자 LaunchAgents 가 걸린다(KISA 자체 시험 D03).
+func TestExpandWatchPathsForEveryHome(t *testing.T) {
+	got := expandWatchPaths([]string{"~/Library/LaunchAgents", "/Library/LaunchDaemons"}, []string{"/Users/a", "/Users/b"})
+	want := []string{"/Users/a/Library/LaunchAgents", "/Users/b/Library/LaunchAgents", "/Library/LaunchDaemons"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	// 홈을 하나도 모르면 손대지 않는다
+	if got := expandWatchPaths([]string{"~/x"}, nil); len(got) != 1 || got[0] != "~/x" {
+		t.Errorf("홈 없음: got %v", got)
+	}
+}
+
+func TestUserHomesSkipsSharedAndHidden(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"alice", "Shared", ".hidden"} {
+		if err := os.Mkdir(root+"/"+d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(root+"/.localized", nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := userHomes(root)
+	if len(got) != 1 || got[0] != root+"/alice" {
+		t.Errorf("got %v", got)
+	}
+}
