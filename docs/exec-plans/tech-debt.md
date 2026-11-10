@@ -29,6 +29,10 @@
 | 따옴표와 쉼표로 붙은 비밀값 옵션은 가려지지 않는다 | 에이전트 명령행 가림 처리 | PowerShell `-ArgumentList "-Password","hunter2"` 형태의 값이 그대로 서버까지 갔다(ARM64 VM). `-Password hunter2` 처럼 띄어 쓴 형태는 가려진다 | 2026-11-11 |
 | 에이전트를 강제 종료하면 pktmon 캡처가 남는다 | `agent/internal/sensor/pktmon.go` | VM 에서 프로세스를 강제 종료했더니 `pktmon status` 가 캡처 중으로 남았다. 다음 에이전트가 뜰 때까지 패킷 캡처가 계속 돈다. 손으로는 `pktmon stop` 으로 정리한다 | 2026-11-11 |
 | 설치 스크립트의 지문 대조(Windows)가 지문이 다를 때 멈추는지 보지 않았다 | `api-service/.../install/windows.ps1`, `agent/packaging/install-windows.ps1` | 검증 콜백이 스크립트 변수(`$ServerCertSha256`, `$seen`)를 읽는다. `packaging/install-windows.ps1` 은 ARM64 VM 에서 지문이 맞는 경우 설치까지 됐다(2026-11-11). 지문이 다른 경우와 서버가 내려주는 쪽은 아직이다. 틀리면 설치가 늘 멈춘다(고정은 안 되므로 TOFU 로 돌아가지는 않는다) | 2026-11-10 |
+| 서버 자체시험·무결성의 기준값이 배포에 연결돼 있지 않다 | `.github/workflows/cd.yml`, `k8s/api-service.yaml` | CI 가 jar 의 `sha256sum` 을 만들어 ConfigMap/Secret 으로 마운트하고 `INTEGRITY_BASELINE_FILE` 을 주는 단계가 없다. 그 전까지 운영의 무결성 항목은 `SKIP` 이다(ADR 029) | 2026-11-11 |
+| 서버 자체시험 API 의 admin 이 가입자 전원이다 | `api-service/.../selftest/web/SelfTestController.java`, `AuthService.signup` | 가입하면 role 이 `admin` 이라 어느 조직의 가입자든 서버 전체의 자체시험을 보고 실행한다. 서버 운영자 구분이 필요하다(인증·접근통제 묶음) | 2026-11-11 |
+| 서버 자체시험 결과를 지우지 않는다 | `selftest_runs` | 시간당 한 행이라 연 약 8,760행이다. 이력 보존은 KISA 4.1.2 에 맞지만 상한이 없다 | 2026-11-11 |
+| api-service 밖의 서비스에는 자체시험·무결성 검증이 없다 | collector, detector, responder, alert, archiver | 관리 서버를 api-service 로 보고 거기만 했다. 평가에서 서버 구성요소 전체를 요구하면 서비스마다 같은 항목이 필요하다 | 2026-11-11 |
 | EOS 를 켰을 때의 비용이 측정되지 않았다 | detector | 측정 인프라만 넣어 두고 켜 보지는 않았다. 켜자는 얘기가 나오면 먼저 재야 한다 | 2026-10-04 |
 
 ## 탐지
@@ -60,6 +64,16 @@
 | NetworkPolicy 가 없다 | `k8s/` | 파드끼리 제한 없이 통신한다. 내부 키가 유일한 방어선이고, 키가 새면 그 위로 막을 층이 없다 | 2026-11-10 |
 | 내부 키 기본값이 `dev-internal-key` 다 | 각 서비스 `application.yml` 의 `edrdog.internal.key` | `INTERNAL_API_KEY` 를 주입하지 못한 서비스는 공개된 기본값으로 뜬다. responder 도 같은 방식이다(다른 서비스와 맞췄다). 기본값을 없애는 건 KISA 2-6 에서 따로 다룬다 | 2026-11-10 |
 | detector 상태가 tenant 를 가리지 않는다 | `detector-service/.../kafkastreams/topology/` 상태 키와 `events` 파티션 키(둘 다 host) | 서로 다른 tenant 에 같은 host 이름의 기기가 있으면 상관 버퍼를 같이 쓴다. 한쪽 이벤트가 다른 쪽 판정의 근거가 되거나 판정을 가린다. 알림의 tenant·target 은 트리거 이벤트를 따르므로 kill 은 트리거 쪽 기기로만 간다. 키를 `tenant\|host` 로 바꾸면 파티션 배치가 달라져 미뤘다(`README.md` 의 파티션 키 절) | 2026-11-10 |
+
+## 감사기록
+
+| 항목 | 위치 | 영향 | 발견일 |
+|---|---|---|---|
+| 감사기록 보관 기간, 용량 임계 통보, 포화 시 대응이 없다 | `api-service/.../audit/` | `audit_log` 는 지우지 않고 쌓이기만 한다(국정원 서버 7.4, 7.5). 조회는 `tenant_id, ts` 색인을 탄다 | 2026-11-11 |
+| 접속 IP 가 `getRemoteAddr()` 다 | `AuthController`, `AlertController` | 로드밸런서나 인그레스 뒤에서는 그 장비 주소가 찍힌다. 앞단이 생기면 `server.forward-headers-strategy` 와 신뢰할 프록시를 정해야 한다. `X-Forwarded-For` 를 그냥 믿으면 위조된다 | 2026-11-11 |
+| tenant 를 알 수 없는 실패 기록은 조회 API 에 안 나온다 | `audit_log` 의 `tenant_id` 가 빈 행 | 가입 안 된 이메일의 로그인 실패, 시크릿이 틀린 enroll 시도. 무차별 대입 탐지는 DB 를 직접 봐야 한다. enroll 실패가 무한히 쌓이는 상한도 없다 | 2026-11-11 |
+| 에이전트 감사기록 중복 제거가 없다 | `POST /api/internal/audit` | 성공 응답을 못 받고 재전송한 배치는 중복 행이 된다. 사건 id 를 에이전트가 만들어 보내면 막을 수 있지만 계약을 늘려야 해서 미뤘다 | 2026-11-11 |
+| 에이전트 감사기록의 사건 유형이 서버에 등록돼 있지 않다 | `AuditType.FORMAT` | 형식만 검사한다. collector 를 통과한 에이전트가 임의 유형 문자열을 남길 수 있다(tenant 와 host 는 서버가 정한다) | 2026-11-11 |
 
 ## 입력 상한
 

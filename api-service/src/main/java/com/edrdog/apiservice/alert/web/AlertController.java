@@ -3,6 +3,10 @@ package com.edrdog.apiservice.alert.web;
 import com.edrdog.apiservice.alert.AlertQueryBuilder;
 import com.edrdog.apiservice.alert.AlertService;
 import com.edrdog.apiservice.alert.AlertStatus;
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -13,6 +17,7 @@ import com.edrdog.apiservice.responder.ResponderClient;
 import com.edrdog.apiservice.web.PageHeaders;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,13 +50,15 @@ public class AlertController {
     private final AuthService auth;
     private final ResponderClient responder;
     private final IncidentService incidents;
+    private final AuditService audit;
 
     public AlertController(AlertService alerts, AuthService auth, ResponderClient responder,
-                           IncidentService incidents) {
+                           IncidentService incidents, AuditService audit) {
         this.alerts = alerts;
         this.auth = auth;
         this.responder = responder;
         this.incidents = incidents;
+        this.audit = audit;
     }
 
     @Operation(summary = "알림 목록",
@@ -175,14 +182,22 @@ public class AlertController {
     public ResponseEntity<KillResult> respond(
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @PathVariable String id,
-            @RequestBody(required = false) RespondRequest ignored) {
-        String tenantId = currentTenantId(authorization);
+            @RequestBody(required = false) RespondRequest ignored,
+            HttpServletRequest http) {
+        Principal principal = auth.resolve(bearerToken(authorization));
+        String tenantId = String.valueOf(principal.tenantId());
         AlertResponse alert = alerts.get(tenantId, id);   // 타 tenant 면 404, 통과하면 권위 있는 host·target 확보
         // 본문의 target 을 쓰면 로그인한 사용자가 그 기기의 아무 프로세스나 죽인다. 알림에 없으면 메우지 않고 거절한다.
         if (alert.target().isBlank()) {
             throw AuthException.invalidInput("이 알림에는 종료 대상이 없습니다");
         }
         KillResult result = responder.kill(tenantId, alert.host(), alert.target());
+        // 누가 어느 기기의 무엇을 죽이라고 했는지 남긴다. 명령이 나갔거나(PENDING) 끝났으면(KILLED) 성공, 그 밖(쿨다운, 꺼짐, 실패)은 실패다.
+        audit.record(AuditEntry.user(principal, AuditType.KILL_REQUEST, alert.host(),
+                result.pending() || result.killed() ? AuditResult.SUCCESS : AuditResult.FAILURE,
+                "process=" + alert.target() + " alertId=" + id + " status=" + result.status()
+                        + (result.executionId() != null ? " executionId=" + result.executionId() : ""),
+                http.getRemoteAddr()));
         HttpStatus status = result.pending() ? HttpStatus.ACCEPTED : HttpStatus.OK;
         return ResponseEntity.status(status).body(result);
     }

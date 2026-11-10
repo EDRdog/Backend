@@ -108,5 +108,13 @@ edrdog:
     connect-timeout-ms: ${CLICKHOUSE_CONNECT_TIMEOUT_MS:2000}
     # 조회는 사용자가 화면 앞에서 기다리는 요청이라 짧게 잡는다(데모 store-timeout 8s 안쪽).
     read-timeout-ms: ${CLICKHOUSE_READ_TIMEOUT_MS:5000}
+  selftest:
+    # 서버 자체시험(KISA BF-10)과 무결성 검증(BF-11). 기동 시, 이 주기, 관리자 요청 시 돌고 결과는 MySQL 에 쌓인다. 근거: ADR 029.
+    interval: ${SELFTEST_INTERVAL:PT1H}
+    # 무결성 기준값 파일. sha256sum 형식("<해시>  <절대경로>" 한 줄씩)이고 jar 와 설정 파일을 적는다.
+    # jar 밖(k8s ConfigMap/Secret 볼륨)에 둔다. 비면 무결성 항목은 SKIP 이다(로컬 개발).
+    integrity-baseline-file: ${INTEGRITY_BASELINE_FILE:}
+    # 자체시험이 새로 실패하면 알릴 Slack webhook. 비면 통보하지 않고 경고 로그와 운영 상태 화면에만 남는다.
+    notify-webhook-url: ${SELFTEST_WEBHOOK_URL:}
   geoip:
     db-path: ${GEOIP_DB_PATH:}           # GeoLite2-Country.mmdb 외부 경로. 비면 클래스패스 번들 사용, 둘 다 없으면 geo API 빈 배열
