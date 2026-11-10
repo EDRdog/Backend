@@ -96,6 +96,16 @@ class OperationsHealthApiIntegrationTest {
     }
 
     @Test
+    void selfTestDependencyIsListedWithTheLatestRunStatus() throws Exception {
+        // 기동 시 자체시험이 이미 한 번 돌았고, 로컬 기본 설정에서는 실패 항목이 없어 up 이다.
+        String token = signup("ops-selftest@edrdog.com");
+
+        mvc.perform(get("/api/operations/health").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dependencies[?(@.name=='selftest')].status").value("up"));
+    }
+
+    @Test
     void 토큰_없으면_401() throws Exception {
         mvc.perform(get("/api/operations/health")).andExpect(status().isUnauthorized());
     }
