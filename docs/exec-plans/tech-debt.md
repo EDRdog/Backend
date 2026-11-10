@@ -29,6 +29,10 @@
 | 따옴표와 쉼표로 붙은 비밀값 옵션은 가려지지 않는다 | 에이전트 명령행 가림 처리 | PowerShell `-ArgumentList "-Password","hunter2"` 형태의 값이 그대로 서버까지 갔다(ARM64 VM). `-Password hunter2` 처럼 띄어 쓴 형태는 가려진다 | 2026-11-11 |
 | 에이전트를 강제 종료하면 pktmon 캡처가 남는다 | `agent/internal/sensor/pktmon.go` | VM 에서 프로세스를 강제 종료했더니 `pktmon status` 가 캡처 중으로 남았다. 다음 에이전트가 뜰 때까지 패킷 캡처가 계속 돈다. 손으로는 `pktmon stop` 으로 정리한다 | 2026-11-11 |
 | 설치 스크립트의 지문 대조(Windows)가 지문이 다를 때 멈추는지 보지 않았다 | `api-service/.../install/windows.ps1`, `agent/packaging/install-windows.ps1` | 검증 콜백이 스크립트 변수(`$ServerCertSha256`, `$seen`)를 읽는다. `packaging/install-windows.ps1` 은 ARM64 VM 에서 지문이 맞는 경우 설치까지 됐다(2026-11-11). 지문이 다른 경우와 서버가 내려주는 쪽은 아직이다. 틀리면 설치가 늘 멈춘다(고정은 안 되므로 TOFU 로 돌아가지는 않는다) | 2026-11-10 |
+| 서버 자체시험·무결성의 기준값이 배포에 연결돼 있지 않다 | `.github/workflows/cd.yml`, `k8s/api-service.yaml` | CI 가 jar 의 `sha256sum` 을 만들어 ConfigMap/Secret 으로 마운트하고 `INTEGRITY_BASELINE_FILE` 을 주는 단계가 없다. 그 전까지 운영의 무결성 항목은 `SKIP` 이다(ADR 029) | 2026-11-11 |
+| 서버 자체시험 API 의 admin 이 가입자 전원이다 | `api-service/.../selftest/web/SelfTestController.java`, `AuthService.signup` | 가입하면 role 이 `admin` 이라 어느 조직의 가입자든 서버 전체의 자체시험을 보고 실행한다. 서버 운영자 구분이 필요하다(인증·접근통제 묶음) | 2026-11-11 |
+| 서버 자체시험 결과를 지우지 않는다 | `selftest_runs` | 시간당 한 행이라 연 약 8,760행이다. 이력 보존은 KISA 4.1.2 에 맞지만 상한이 없다 | 2026-11-11 |
+| api-service 밖의 서비스에는 자체시험·무결성 검증이 없다 | collector, detector, responder, alert, archiver | 관리 서버를 api-service 로 보고 거기만 했다. 평가에서 서버 구성요소 전체를 요구하면 서비스마다 같은 항목이 필요하다 | 2026-11-11 |
 | EOS 를 켰을 때의 비용이 측정되지 않았다 | detector | 측정 인프라만 넣어 두고 켜 보지는 않았다. 켜자는 얘기가 나오면 먼저 재야 한다 | 2026-10-04 |
 
 ## 탐지
