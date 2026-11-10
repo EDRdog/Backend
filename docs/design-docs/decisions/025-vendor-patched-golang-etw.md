@@ -30,7 +30,7 @@ Windows 11 ARM64 VM(UTM, Pro 26300.9711)에서 에이전트를 처음 돌렸다.
 - 같은 VM 에서 고친 바이너리로 프로세스(notepad, 부모 powershell), 네트워크, DNS(example.org), 파일(시작프로그램 폴더 CREATE), L7(TLS 1.3, example.org) 이벤트가 로컬 서버의 ClickHouse 까지 들어왔다. 측정 조건: Windows 11 ARM64 Pro 26300.9711, UTM, Defender 실시간 보호 켬, 몇 분씩 짧게 실행. 운영 실측이 아니다.
 - 권한 없이 띄우면 안내 문구를 남기고 바로 종료 코드 1 로 끝나는 것을 같은 VM 에서 확인했다.
 - 라이브러리 사본을 레포가 관리한다. 상류가 고치면 `replace` 와 `third_party/golang-etw` 를 지운다. 두 라이브러리 모두 GPL-3.0 이라 사본과 함께 LICENSE 를 둔다.
-- 사본을 상류 새 버전으로 바꿀 때 `EDRdog 패치` 주석 두 곳을 다시 넣어야 한다. 빠뜨리면 다시 조용히 0건이 된다. 상류가 고쳤는지는 `go build -gcflags=-m ./etw` 에서 `AllocEventFilterEventID` 의 `make` 가 `escapes to heap` 인지로 본다.
+- 사본을 상류 새 버전으로 바꿀 때 `EDRdog 패치` 주석 두 곳을 다시 넣어야 한다(ADR 026 의 `NewSystemLoggerRealTimeSession` 까지 세 곳). 빠뜨리면 다시 조용히 0건이 된다. 상류가 고쳤는지는 `go build -gcflags=-m ./etw` 에서 `AllocEventFilterEventID` 의 `make` 가 `escapes to heap` 인지로 본다.
 - 센서가 전부 멈춰 에이전트가 끝나면 다시 띄울 주체가 필요하다. 두 Windows 설치 스크립트에 `sc.exe failure`(1분 뒤 재시작, 하루 지나면 횟수 초기화)와 `sc.exe failureflag 1` 을 넣었다. failureflag 가 없으면 SCM 은 정상 정지 보고에 종료 코드만 1 인 경우를 실패로 치지 않는다. VM 에서 `packaging/install-windows.ps1` 로 설치한 뒤 ETW 세션을 밖에서 끊자 에이전트가 종료 코드 1 로 끝났고(이벤트 7023), SCM 이 60초 뒤 다시 띄워 세션이 다시 열렸다(7031). 전에는 하트비트만 나가며 0건으로 돌았다.
 - `third_party/golang-etw` 는 별도 모듈이라 `go vet ./...`, `go test ./...` 대상에서 빠진다. 사본의 시험은 돌리지 않는다.
 

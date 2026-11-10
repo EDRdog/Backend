@@ -53,6 +53,15 @@ func NewKernelRealTimeSession(flags ...uint32) (p *RealTimeSession) {
 	return
 }
 
+// EDRdog 패치: 시스템 프로바이더(SystemProcessProvider 등)를 받는 전용 세션.
+// NT Kernel Logger 는 기기에 하나뿐이라 열면 다른 도구의 세션을 빼앗는다. Windows 8 부터는
+// EVENT_TRACE_SYSTEM_LOGGER_MODE 세션에 시스템 프로바이더를 켜서 같은 커널 이벤트를 따로 받는다.
+func NewSystemLoggerRealTimeSession(name string) (p *RealTimeSession) {
+	p = NewRealTimeSession(name)
+	p.properties.LogFileMode |= EVENT_TRACE_SYSTEM_LOGGER_MODE
+	return
+}
+
 // IsStarted returns true if the session is already started
 func (p *RealTimeSession) IsStarted() bool {
 	return p.sessionHandle != 0

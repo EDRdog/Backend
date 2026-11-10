@@ -962,7 +962,7 @@ powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
 - 비밀값 옵션(`-Password`, `/token:`, `-EncodedCommand` 등)의 값이 `<redacted>` 로 가려지는지도
   같이 본다
 
-**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711, Defender 켬):** 5초 사는 `powershell.exe -NoProfile -Command ...` 는 인자가 그대로 실렸다. 곧 끝나는 `cmd.exe /c exit` 50건은 **1건(2%)만** 인자가 실렸고 나머지는 `\Device\HarddiskVolume3\Windows\System32\cmd.exe` 처럼 장치 경로만 남았다. **짧게 끝나는 프로세스의 명령행 탐지는 사실상 안 된다.** `-Password <값>` 은 `<redacted>` 로 가려졌다. 단 PowerShell `-ArgumentList "-Password","hunter2"` 처럼 따옴표와 쉼표로 붙은 형태는 가려지지 않았다
+**VM 결과(2026-11-11, Windows 11 ARM64 26300.9711, Defender 켬):** 5초 사는 `powershell.exe -NoProfile -Command ...` 는 인자가 그대로 실렸다. 곧 끝나는 `cmd.exe /c exit` 50건은 **1건(2%)만** 인자가 실렸고 나머지는 `\Device\HarddiskVolume3\Windows\System32\cmd.exe` 처럼 장치 경로만 남았다. **짧게 끝나는 프로세스의 명령행 탐지는 사실상 안 됐다.** 그래서 시스템 프로세스 프로바이더에서 명령행을 받게 바꿨고(ADR 026), 고친 뒤 같은 시험에서 50건 모두 실렸다(ARM64 빌드, amd64 빌드의 x64 에뮬레이션 둘 다). 합친 명령행의 첫 토큰은 장치 경로로 남는다. `-Password <값>` 은 `<redacted>` 로 가려졌다. 단 PowerShell `-ArgumentList "-Password","hunter2"` 처럼 따옴표와 쉼표로 붙은 형태는 가려지지 않았다
 
 ### 8. 서비스로 등록해 부팅 후 자동 기동되는가
 
@@ -990,7 +990,7 @@ Get-Service edrdog-agent          # 로그인 없이도 Running 이어야 한다
   서비스가 뜨는데 이벤트만 0건이면 콘솔로 다시 띄워 로그를 직접 봐라. 이건 지금 구조의 약점이고,
   실기기 검증에서 문제가 되면 파일 로깅을 넣어야 한다
 
-**VM 결과(2026-11-11):** `install-windows.ps1` 로 설치하자 `BINARY_PATH_NAME` 에 `-service` 가 붙고 Running 이 됐다. 재부팅하니 부팅 6초 뒤 에이전트가 등록 실패로 종료 코드 1 로 끝났고(서버까지 가는 터널이 아직 없었다), SCM 이 60초 뒤 다시 띄워 다섯 종이 다시 들어왔다. **에이전트는 등록에 실패하면 다시 시도하지 않고 끝난다.** SCM 재시작이 하루 3번이라 부팅 후 3분 넘게 서버에 닿지 않으면 그날은 수집이 멈춘다(`docs/exec-plans/tech-debt.md`). VM 에 자동 로그인이 켜져 있어 로그인 없는 부팅은 엄밀히 보지 못했다.
+**VM 결과(2026-11-11):** `install-windows.ps1` 로 설치하자 `BINARY_PATH_NAME` 에 `-service` 가 붙고 Running 이 됐다. 재부팅하니 부팅 6초 뒤 에이전트가 등록 실패로 종료 코드 1 로 끝났고(서버까지 가는 터널이 아직 없었다), SCM 이 60초 뒤 다시 띄워 다섯 종이 다시 들어왔다. **에이전트는 등록에 실패하면 다시 시도하지 않고 끝난다.** SCM 재시작이 하루 3번이라 부팅 후 3분 넘게 서버에 닿지 않으면 그날은 수집이 멈췄다. 그래서 등록을 될 때까지 다시 시도하게 바꿨다(ADR 026). 고친 amd64 빌드(x64 에뮬레이션)를 서비스로 깔고 서버 없이 재부팅하자 7분 넘게 같은 프로세스가 살아 있었고 SCM 실패 기록이 0건이었다. 터널을 연 뒤 다음 시도에서 붙어 이벤트가 다시 들어왔다. VM 에 자동 로그인이 켜져 있어 로그인 없는 부팅은 엄밀히 보지 못했다.
 
 처음에는 설치 스크립트가 **구문 오류로 멈췄다.** 한국어 Windows 의 PowerShell 5.1 은 BOM 없는 파일을 cp949 로 읽어 한글 문자열이 깨진다. 그래서 `install-windows.ps1` 은 UTF-8 BOM 을 붙여 두고 `scripts/check.sh` 가 확인한다
 
