@@ -25,6 +25,8 @@ type Config struct {
 	FlushIntervalSeconds int    `json:"flush_interval_seconds"`
 	BufferSize           int    `json:"buffer_size"`
 	BatchSize            int    `json:"batch_size"`
+	// SelfCheckIntervalSeconds 는 보안 기능 자체시험과 무결성 검증 주기다(KISA BF-10, BF-11).
+	SelfCheckIntervalSeconds int `json:"selfcheck_interval_seconds"`
 }
 
 // Load 는 설정 파일을 읽고 기본값을 채운 뒤 검증한다.
@@ -64,6 +66,9 @@ func (c *Config) applyDefaults() error {
 	if c.BatchSize <= 0 {
 		c.BatchSize = 500
 	}
+	if c.SelfCheckIntervalSeconds <= 0 {
+		c.SelfCheckIntervalSeconds = 3600
+	}
 	return nil
 }
 
@@ -80,6 +85,11 @@ func (c Config) validate() error {
 // FlushInterval 은 전송 주기다.
 func (c Config) FlushInterval() time.Duration {
 	return time.Duration(c.FlushIntervalSeconds) * time.Second
+}
+
+// SelfCheckInterval 은 자체시험 주기다.
+func (c Config) SelfCheckInterval() time.Duration {
+	return time.Duration(c.SelfCheckIntervalSeconds) * time.Second
 }
 
 // HTTPClient 는 설정에 맞춘 HTTP 클라이언트를 만든다.

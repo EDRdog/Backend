@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/2026-Siheung-Bootcamp-Team-I/Backend/agent/internal/event"
@@ -29,6 +30,8 @@ type Options struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	Logger        *slog.Logger
+	// OnSensorStop 은 센서가 오류로 멈출 때 불린다. 감사기록(KISA BF-13)을 남기는 자리다. nil 이면 건너뛴다.
+	OnSensorStop func(name string, err error)
 }
 
 // Runtime 은 센서 묶음을 돌리고 모인 이벤트를 흘려보낸다.
@@ -37,6 +40,11 @@ type Runtime struct {
 	buf    *event.Buffer
 	opts   Options
 	log    *slog.Logger
+
+	// 센서 상태. 자체시험이 다른 고루틴에서 읽는다.
+	mu      sync.Mutex
+	total   int
+	stopped []string
 }
 
 // New 는 런타임을 만든다.
@@ -65,6 +73,13 @@ func New(sender Sender, opts Options) *Runtime {
 // Buffer 는 센서가 이벤트를 넣는 버퍼다.
 func (r *Runtime) Buffer() *event.Buffer { return r.buf }
 
+// SensorState 는 띄운 센서 수와 오류로 멈춘 센서 이름이다. Run 을 부르기 전에는 (0, nil) 이다.
+func (r *Runtime) SensorState() (total int, stopped []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.total, append([]string(nil), r.stopped...)
+}
+
 // Flush 는 버퍼에서 한 배치를 꺼내 보낸다.
 // 실패하면 배치를 버퍼 앞으로 되돌리고 오류를 올린다. 되돌리지 않으면 그 이벤트는 사라진다.
 func (r *Runtime) Flush(ctx context.Context) error {
@@ -90,10 +105,19 @@ func (r *Runtime) Run(ctx context.Context, sensors []Sensor) error {
 
 	// 오류로 멈춘 센서를 센다. 전부 멈췄는데 계속 돌면 이벤트 0건으로 멀쩡해 보인다.
 	failed := make(chan struct{}, len(sensors))
+	r.mu.Lock()
+	r.total = len(sensors)
+	r.mu.Unlock()
 	for _, s := range sensors {
 		go func(s Sensor) {
 			if err := s.Run(sensorCtx, events); err != nil && !errors.Is(err, context.Canceled) {
 				r.log.Error("센서가 멈췄다", "sensor", s.Name(), "err", err)
+				r.mu.Lock()
+				r.stopped = append(r.stopped, s.Name())
+				r.mu.Unlock()
+				if r.opts.OnSensorStop != nil {
+					r.opts.OnSensorStop(s.Name(), err)
+				}
 				failed <- struct{}{}
 			}
 		}(s)

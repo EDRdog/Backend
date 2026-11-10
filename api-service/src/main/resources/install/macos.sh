@@ -106,6 +106,9 @@ cat > "$CONFIG_PATH" <<EOF
 EOF
 chmod 600 "$CONFIG_PATH"
 umask 022
+# 무결성 기준값. 에이전트가 기동 시와 주기마다 바이너리와 설정 파일을 이 값과 비교한다(ADR 030).
+# 다시 설치하면 바이너리와 함께 기준값도 새로 기록된다.
+"$BIN_PATH" -config "$CONFIG_PATH" -record-baseline || fail "무결성 기준값을 기록하지 못했다"
 mkdir -p "$LOG_DIR"
 
 cat > "$PLIST_PATH" <<EOF

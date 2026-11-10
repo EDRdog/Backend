@@ -283,7 +283,8 @@ JSON 파일 하나다. 필드는 [`internal/config/config.go`](internal/config/c
   "ca_cert_path": "/etc/edrdog/server.pem",
   "flush_interval_seconds": 5,
   "buffer_size": 10000,
-  "batch_size": 500
+  "batch_size": 500,
+  "selfcheck_interval_seconds": 3600
 }
 ```
 
@@ -296,6 +297,7 @@ JSON 파일 하나다. 필드는 [`internal/config/config.go`](internal/config/c
 | `flush_interval_seconds` | | `5` | 이벤트 배치 전송 주기. **서버가 안 줄 때의 기본값이다.** 아래 참고. HTTP 타임아웃은 언제나 이 값을 쓴다 |
 | `buffer_size` | | `10000` | 전송 대기 버퍼 상한. 넘치면 오래된 것부터 버린다 |
 | `batch_size` | | `500` | 한 번에 보낼 이벤트 수 |
+| `selfcheck_interval_seconds` | | `3600` | 보안 기능 자체시험과 무결성 검증 주기. 아래 `자체시험·무결성·감사기록` 참고 |
 
 `enroll_secret` 이 들어 있으므로 파일 권한을 조여야 한다. 설치 스크립트는 macOS 에서 `0600`,
 Windows 에서 SYSTEM 과 Administrators 만 남기는 ACL 을 건다.
@@ -409,6 +411,9 @@ irm https://edr.example.com/i/AbC123.ps1 | iex            # Windows (관리자 P
 쓰고, 다르면 멈춘다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이 고정된 서버가 되어 kill 명령까지
 보낼 수 있다(`docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md`).
 
+설치 스크립트는 설정 파일을 쓴 직후 무결성 기준값도 기록한다(`-record-baseline`). 에이전트 릴리스가 이 플래그를
+가진 뒤에 서버(설치 링크)를 배포해야 한다. 옛 바이너리는 플래그를 몰라 설치가 멈춘다.
+
 서버에 설정해야 하는 값은 넷이다.
 
 | 키 | 뜻 |
@@ -499,6 +504,72 @@ Get-Service edrdog-agent
 
 서비스로 등록될 때 바이너리에 `-service` 플래그가 붙는다. 이 플래그는 서비스 제어 관리자와
 대화하는 모드로, 직접 실행할 때는 쓰지 않는다.
+
+## 자체시험·무결성·감사기록 (KISA BF-10, BF-11, BF-13)
+
+에이전트가 자기 보안 기능이 멀쩡한지 스스로 확인하고, 그 결과와 주요 사건을 서버에 감사기록으로 남긴다.
+왜 이렇게 정했는지와 버린 대안은 [ADR 030](../docs/design-docs/decisions/030-agent-selftest-integrity-audit.md),
+서버와의 계약은 [`agent-protocol.md`](../docs/agent-protocol.md) 5절이다.
+
+**`-selftest` 와 다르다.** `-selftest` 는 센서 대신 가짜 이벤트를 보내 서버까지의 경로를 확인한다. 이쪽은 에이전트 자신의
+보안 설정을 점검한다. 이름이 섞이지 않게 플래그는 `-security-check`, 패키지는 `internal/selfcheck`, 감사 사건은
+`security_check` 와 `integrity_check` 로 불렀다.
+
+| 항목 | 보는 것 | 통과 조건 |
+|:---|:---|:---|
+| `server_pinning` | 서버 인증서 고정 | `base_url` 이 https 이고 `ca_cert_path` 의 CA 를 읽을 수 있다 |
+| `config_permission` | 설정 파일 권한(enroll_secret 이 들어 있다) | 그룹·기타 사용자 접근 불가(`0600`) |
+| `ca_cert_permission` | 고정 인증서 권한 | 그룹·기타 사용자 쓰기 불가 |
+| `sensors` | 센서 생존 | 띄운 센서가 전부 살아 있다 |
+| `binary_integrity` | 자기 실행 파일의 SHA-256 | 설치 때 기록한 기준값과 같다 |
+| `config_integrity` | 설정 파일의 SHA-256 | 설치 때 기록한 기준값과 같다 |
+
+`skip` 은 그 환경에서 확인할 수 없다는 뜻이고 실패가 아니다. 기동 시점에는 센서가 아직 없어 `sensors` 가 `skip` 이고,
+**Windows 에서는 권한 두 항목이 `skip` 이다**(ACL 을 읽지 않는다. `docs/exec-plans/tech-debt.md`).
+
+**언제 돌리나.** 기동할 때 한 번, 이후 `selfcheck_interval_seconds` 마다 돌려 결과를 감사기록으로 남긴다. 관리자는 엔드포인트에서 직접
+요청할 수 있다. 서버로 보내지 않고 항목별 결과를 출력하며, 실패가 하나라도 있으면 종료 코드가 1 이다.
+
+```bash
+sudo ./edrdog-agent -config /etc/edrdog/config.json -security-check
+```
+
+```
+server_pinning       ok
+config_permission    ok
+ca_cert_permission   ok
+sensors              skip  센서를 띄우기 전이다
+binary_integrity     ok    sha256=7e9eeaa6...
+config_integrity     fail  기준값과 다르다 (기준 db61d722..., 현재 4f0c1a9e...)
+```
+
+**무결성 기준값.** 설치 스크립트가 설정 파일을 쓴 직후 `-record-baseline` 으로 바이너리와 설정 파일의 SHA-256 을
+설정 파일 옆 `integrity.json` 에 쓴다(`/etc/edrdog/integrity.json`, `C:\ProgramData\EDRdog\integrity.json`).
+정당한 교체는 설치 스크립트를 다시 돌리는 것이고, 그때 기준값도 새로 쓴다. 바이너리만 손으로 덮어쓰면(`cp`) TCC 도 풀리고
+무결성 실패도 남는다. 기준값 파일이 없거나 깨졌으면 둘 다 실패다. **기준값이 없는 옛 설치는 설치 스크립트를 다시 돌릴 때까지
+무결성 실패로 기록된다.**
+
+**이것이 막지 못하는 것.** 에이전트는 root·SYSTEM 으로 돈다. 그 권한을 가진 사람은 바이너리와 기준값을 같이 바꿀 수 있다.
+로컬 비교가 잡는 것은 관리자 아닌 쪽의 변경과 사고성 손상이다. 통과한 항목의 현재 SHA-256 이 감사기록 `detail` 로 서버에
+남으므로, 관리자는 그 값을 릴리스 `.sha256` 과 대조할 수 있다.
+
+**실패해도 에이전트는 계속 돈다.** 멈추면 그 기기의 수집과 대응이 같이 멈춘다. 대응은 로그 경고와 감사기록의 `failure` 다.
+
+**감사기록.** 아래 사건을 메모리 로그(상한 1000건)에 쌓고, 이벤트 전송 주기마다 `POST /api/agent/audit` 로 보낸다.
+서버가 못 받으면 로그에 남겨 두고 다음 주기에 다시 보낸다. 종료할 때는 `agent_stop` 을 남기고 마지막으로 한 번 더 보낸다.
+
+| 사건 | 시점 |
+|:---|:---|
+| `agent_start`, `agent_stop` | 시작과 종료. 강제 종료(SIGKILL, 전원 차단)는 남지 않는다 |
+| `agent_enroll` | 서버 등록 성공 |
+| `sensor_stop` | 센서가 오류로 멈춤 |
+| `security_check`, `integrity_check` | 기동 시와 주기마다 |
+| `command_result` | 대응 명령 실행(이미 실행한 명령을 다시 받아 결과만 다시 보고할 때는 안 남긴다) |
+
+에이전트가 죽으면 못 보낸 감사기록은 사라진다(디스크 큐 없음). 감사기록에 비밀값을 싣지 않는다. 무결성 결과에는 파일의
+해시만 들어간다.
+
+관리자는 서버의 감사기록 조회로 에이전트의 자체시험과 무결성 결과를 본다.
 
 ## `-selftest` 로 서버까지의 경로 확인
 

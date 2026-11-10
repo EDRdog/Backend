@@ -22,6 +22,7 @@ $ConfDir     = 'C:\ProgramData\EDRdog'
 $BinPath     = Join-Path $InstallDir 'edrdog-agent.exe'
 $ConfigPath  = Join-Path $ConfDir 'config.json'
 $CertPath    = Join-Path $ConfDir 'server.pem'
+$BaselinePath = Join-Path $ConfDir 'integrity.json'
 $LogPath     = Join-Path $ConfDir 'agent.log'
 $ServiceName = 'edrdog-agent'
 
@@ -133,8 +134,14 @@ $config = @"
 "@
 [System.IO.File]::WriteAllText($ConfigPath, $config)
 
-# enroll secret 과 로그는 일반 사용자가 읽으면 안 된다. 상속을 끊고 SYSTEM 과 Administrators 만 남긴다.
-foreach ($path in @($ConfigPath)) {
+# 무결성 기준값. 에이전트가 기동 시와 주기마다 바이너리와 설정 파일을 이 값과 비교한다(ADR 030).
+# 다시 설치하면 바이너리와 함께 기준값도 새로 기록된다.
+& $BinPath -config $ConfigPath -record-baseline
+if ($LASTEXITCODE -ne 0) { Fail '무결성 기준값을 기록하지 못했다' }
+
+# enroll secret 과 로그는 일반 사용자가 읽으면 안 된다. 기준값 파일은 바꾸면 검증이 무력해진다.
+# 상속을 끊고 SYSTEM 과 Administrators 만 남긴다.
+foreach ($path in @($ConfigPath, $BaselinePath)) {
     $acl = Get-Acl $path
     $acl.SetAccessRuleProtection($true, $false)
     $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }

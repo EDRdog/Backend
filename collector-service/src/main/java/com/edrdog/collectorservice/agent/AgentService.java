@@ -12,8 +12,10 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /** 수집 API 의 서버 로직. enroll secret/node_key 인증과 tenant 태깅·검증·발행을 담당한다. */
 @Service
@@ -32,6 +35,7 @@ public class AgentService {
     private final TenantResolverClient tenants;
     private final AgentNodeRepository nodes;
     private final EventsProducer producer;
+    private final AuditClient audit;
     private final Timer uplink;
     private final DistributionSummary wireBytes;
     private final DistributionSummary rawBytes;
@@ -44,10 +48,11 @@ public class AgentService {
     private static final long ACK_TIMEOUT_SECONDS = 5;
 
     public AgentService(TenantResolverClient tenants, AgentNodeRepository nodes, EventsProducer producer,
-                        MeterRegistry metrics) {
+                        AuditClient audit, MeterRegistry metrics) {
         this.tenants = tenants;
         this.nodes = nodes;
         this.producer = producer;
+        this.audit = audit;
         this.uplink = Timer.builder("agent.uplink.rtt")
                 .description("에이전트가 잰 events 전송 왕복 시간 — 고객사 네트워크를 타는 유일한 구간")
                 .publishPercentiles(0.5, 0.95, 0.99)
@@ -167,5 +172,45 @@ public class AgentService {
             throw new PublishException(e);
         }
         return sent.size();
+    }
+
+    /** 감사기록 한 요청의 건수 상한. 에이전트가 이 크기로 나눠 보낸다(agent/internal/audit 의 MaxBatch). */
+    static final int AUDIT_MAX_EVENTS = 100;
+
+    /** detail 길이 상한. 넘치면 잘라서 받는다. 버리면 실패 사유가 통째로 사라진다. */
+    static final int AUDIT_MAX_DETAIL = 1000;
+
+    private static final Pattern AUDIT_TYPE = Pattern.compile("[a-z_]{1,64}");
+
+    /**
+     * 에이전트 감사기록을 검증해 api-service 로 넘기고 넘긴 건수를 돌려준다.
+     * 모양이 틀린 건(type 모양, result 값)은 그 건만 버린다. 한 건이 배치를 막으면 정상 기록까지 영영 못 간다.
+     * 건수 초과·누락은 {@link ResponseStatusException}(400), api-service 전달 실패는 {@link AuditForwardException}(503)이다.
+     */
+    public int audit(AgentNode node, List<AuditEvent> raw) {
+        if (raw == null || raw.size() > AUDIT_MAX_EVENTS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "audit events 는 1~" + AUDIT_MAX_EVENTS + "건이어야 한다");
+        }
+        long now = System.currentTimeMillis();
+        List<AuditEvent> valid = new ArrayList<>();
+        for (AuditEvent e : raw) {
+            if (e == null || e.type() == null || !AUDIT_TYPE.matcher(e.type()).matches()
+                    || !("success".equals(e.result()) || "failure".equals(e.result()))) {
+                continue;
+            }
+            String detail = e.detail() == null ? "" : e.detail();
+            if (detail.length() > AUDIT_MAX_DETAIL) {
+                detail = detail.substring(0, AUDIT_MAX_DETAIL);
+            }
+            // 시계가 틀어진 단말이 0 이나 음수를 보내면 서버 시각으로 대신한다.
+            valid.add(new AuditEvent(e.ts() > 0 ? e.ts() : now, e.type(), e.result(), detail));
+        }
+        if (valid.size() < raw.size()) {
+            log.warn("감사기록 {}건 버림 host={}", raw.size() - valid.size(), node.getHostIdentifier());
+        }
+        if (!valid.isEmpty()) {
+            audit.forward(node.getTenantId(), node.getHostIdentifier(), valid);
+        }
+        return valid.size();
     }
 }

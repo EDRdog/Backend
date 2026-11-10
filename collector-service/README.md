@@ -4,7 +4,7 @@
 `events` 로 발행한다.
 
 ```
-Go Agent ──HTTPS(enroll/heartbeat/events/command-result)──▶ collector ──▶ [events] ──▶ detector / archiver
+Go Agent ──HTTPS(enroll/heartbeat/events/audit/command-result)──▶ collector ──▶ [events] ──▶ detector / archiver
 (엔드포인트)                                                인증·tenant태깅·검증        검증 통과분
 ```
 
@@ -22,7 +22,7 @@ detector 까지 흘러가면 판정이 오염된다.
 | 경로 | 인증 |
 |:---|:---|
 | `POST /api/agent/enroll` | `enroll_secret` (api-service 에 물어봐 tenant 를 푼다) |
-| `POST /api/agent/heartbeat` `/events` `/command-result` | `X-Node-Key` 헤더 |
+| `POST /api/agent/heartbeat` `/events` `/audit` `/command-result` | `X-Node-Key` 헤더 |
 | `GET /api/internal/nodes?tenantId=` | `X-Internal-Key` 헤더 (서비스 간 조회) |
 
 실패는 전부 401 이다. 200 본문에 실패를 담지 않는다. 에이전트는 401 을 받으면 저장한 node_key 를
@@ -35,6 +35,18 @@ SecureRandom 이라 사전공격 대상이 아니고, 매 요청 인증에 태�
 
 평문을 저장하지 않으니 재-enroll 때 기존 토큰을 돌려줄 방법이 없다. 그래서 같은 host 가 다시
 등록하면 노드는 하나로 유지하되 **토큰은 새로 발급**한다.
+
+## 감사기록 전달 (`POST /api/agent/audit`)
+
+에이전트의 감사기록(KISA BF-13)을 받아 api-service 의 `POST /api/internal/audit` 로 넘긴다. Kafka 를 거치지 않는다.
+이벤트는 탐지 입력이고 감사기록은 관리자 증적이라 가는 곳이 다르다. 계약은 `docs/agent-protocol.md` 5절,
+이유는 `docs/design-docs/decisions/030-agent-selftest-integrity-audit.md`.
+
+- tenant 와 host 는 본문이 아니라 `X-Node-Key` 로 푼 노드의 값이다
+- 요청당 1~100건, 본문 8MB(다른 에이전트 경로와 같은 필터). `detail` 은 1000자에서 자른다
+- 모양이 틀린 건(`type` 이 `[a-z_]{1,64}` 가 아니거나 `result` 가 `success`/`failure` 가 아님)은 그 건만 버린다
+- api-service 로 못 넘기면 503 이다. 이벤트 발행 실패(503)와 같은 이유로, 에이전트가 같은 기록을 다시 보내게 한다.
+  responder 호출처럼 로그만 남기고 삼키지 않는다. 감사기록은 잃으면 안 된다
 
 ## 검증 규칙 ([`RawEventMapper`](src/main/java/com/edrdog/collectorservice/RawEventMapper.java))
 

@@ -67,6 +67,21 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.BatchSize != 500 {
 		t.Errorf("BatchSize = %d, want 500", cfg.BatchSize)
 	}
+	if cfg.SelfCheckInterval() != time.Hour {
+		t.Errorf("SelfCheckInterval = %v, want 1h", cfg.SelfCheckInterval())
+	}
+}
+
+func TestLoadKeepsExplicitSelfCheckInterval(t *testing.T) {
+	path := write(t, "config.json", `{"base_url":"https://edr.example","enroll_secret":"s","selfcheck_interval_seconds":60}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfCheckInterval() != time.Minute {
+		t.Errorf("SelfCheckInterval = %v, want 1m", cfg.SelfCheckInterval())
+	}
 }
 
 func TestLoadKeepsExplicitValues(t *testing.T) {

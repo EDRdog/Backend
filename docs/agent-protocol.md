@@ -249,6 +249,66 @@ X-Node-Key: ...
 
 `PENDING` / `TIMEOUT` / `COOLDOWN` / `DISABLED` 는 서버가 붙인다. 엔드포인트는 그 판단을 할 수 없다.
 
+## 5. 감사기록 전송
+
+```
+POST /api/agent/audit
+X-Node-Key: ...
+```
+
+```json
+{
+  "events": [
+    { "ts": 1785341400000, "type": "integrity_check", "result": "success",
+      "detail": "binary_integrity=ok(sha256=e3b0...); config_integrity=ok(sha256=9f86...)" }
+  ]
+}
+```
+
+KISA BF-13 의 에이전트 감사기록이다. 이벤트(`/api/agent/events`)와 따로 보낸다. 이벤트는 탐지 입력이고 감사기록은
+관리자가 조회하는 증적이라 가는 곳이 다르다(`docs/design-docs/decisions/030-agent-selftest-integrity-audit.md`).
+
+| 필드 | 의미 |
+|:---|:---|
+| `ts` | 발생 시각, epoch millis |
+| `type` | 사건 종류. 소문자와 밑줄 1~64자. 아래 표 |
+| `result` | `success` 또는 `failure` |
+| `detail` | 사건 설명. 1000자를 넘으면 서버가 잘라서 받는다. 비밀값을 싣지 않는다 |
+
+| `type` | 언제 |
+|:---|:---|
+| `agent_start` | 에이전트가 시작할 때. `version`, `platform` |
+| `agent_stop` | 종료할 때. 센서가 전부 멈춰 끝나면 `failure`. 강제 종료(SIGKILL, 전원 차단)는 남지 않는다 |
+| `agent_enroll` | 서버 등록에 성공했을 때 |
+| `sensor_stop` | 센서가 오류로 멈출 때. 센서 이름과 오류 |
+| `security_check` | 보안 기능 자체시험(KISA BF-10). 기동 시와 주기마다 한 건. 항목별 결과가 `detail` 에 `이름=ok|fail|skip` 으로 접혀 있다 |
+| `integrity_check` | 바이너리와 설정 파일 무결성 검증(KISA BF-11). 기동 시와 주기마다 한 건. 통과한 항목은 현재 SHA-256 을 싣는다 |
+| `command_result` | 대응 명령을 실행했을 때. 명령 id, 종류, 대상, 결과. `FAILED` 이면 `failure`, 나머지는 `success` |
+
+자체시험 항목은 `server_pinning`(서버 인증서 고정 설정), `config_permission`(설정 파일이 다른 사용자에게 안 열려 있다),
+`ca_cert_permission`(고정 인증서를 다른 사용자가 못 바꾼다), `sensors`(띄운 센서가 전부 살아 있다)다.
+`skip` 은 그 환경에서 확인할 수 없다는 뜻이고 실패가 아니다(기동 시점의 `sensors`, Windows 의 권한 두 항목).
+무결성 항목은 `binary_integrity`, `config_integrity` 다.
+
+`tenantId` 와 `host` 는 에이전트가 보내지 않는다. 서버가 node_key 로 풀어 붙인다. 본문에 있어도 읽지 않는다.
+collector 는 같은 값을 api-service 의 `POST /api/internal/audit`(`X-Internal-Key`)로 넘긴다.
+
+```json
+{ "tenantId": 7, "host": "lab-mac", "events": [ { "ts": 1785341400000, "type": "agent_start", "result": "success", "detail": "version=0.1.0 platform=darwin" } ] }
+```
+
+**200** `{ "accepted": 1 }`. `accepted` 는 api-service 로 넘긴 건수다. 모양이 틀린 건(`type` 모양, `result` 값)은 그 건만 빠진다.
+
+**400**: `events` 가 없거나 100건을 넘는다. 에이전트는 100건씩 나눠 보낸다.
+
+**413**: 본문이 8MB 를 넘는다. 위 전송 절의 상한이 그대로 걸린다.
+
+**503**: api-service 로 넘기지 못했다. 에이전트는 그 기록을 메모리 로그 앞으로 되돌리고 다음 주기에 다시 보낸다.
+응답이 유실되면 같은 배치가 두 번 들어갈 수 있다(적어도 한 번 전달).
+
+에이전트의 로그는 1000건이 상한이고 넘치면 오래된 것부터 버린다. 프로세스가 죽으면 못 보낸 기록도 사라진다.
+디스크 큐는 두지 않았다(이벤트 버퍼와 같은 한계).
+
 ## 대응 결과는 조회로 받는다
 
 에이전트는 방화벽 안쪽이라 서버가 먼저 부를 수 없고, 명령은 다음 하트비트에 실려 나간다.
