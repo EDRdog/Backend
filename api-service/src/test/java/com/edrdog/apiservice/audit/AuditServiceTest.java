@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
  */
 @SpringBootTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@TestPropertySource(properties = "spring.kafka.listener.auto-startup=false")
+@TestPropertySource(properties = {"spring.kafka.listener.auto-startup=false", "edrdog.selftest.run-on-startup=false"})
 class AuditServiceTest {
 
     @Autowired
@@ -177,5 +177,20 @@ class AuditServiceTest {
         assertEquals(List.of("u5"), last.items().stream().map(AuditRecord::getActor).toList());
         assertFalse(last.hasMore());
         assertNull(last.total());
+    }
+
+    // 서버 전체 사건(자체시험·무결성)은 tenant 가 없다. 어느 조직의 admin 이 봐도 나와야 한다
+    @Test
+    @org.springframework.test.annotation.DirtiesContext(methodMode = org.springframework.test.annotation.DirtiesContext.MethodMode.AFTER_METHOD)   // tenant 없는 행은 다른 테스트의 tenant 조회에도 보여 DB 를 새로 띄운다
+    void searchIncludesServerWideSystemRecords() {
+        long t = 9301;
+        audit.record(AuditEntry.system(null, AuditType.SELF_TEST_RESULT, "MANUAL", AuditResult.SUCCESS, "ok"));
+        audit.record(at(9302, 1000, AuditType.LOGOUT, AuditResult.SUCCESS, "x@y.com"));
+
+        var rows = audit.search(new AuditFilter(t, null, null, AuditType.SELF_TEST_RESULT, null, null,
+                false, 100, 0, false)).items();
+        assertEquals(1, rows.size());
+        assertEquals(0, audit.search(new AuditFilter(t, null, null, AuditType.LOGOUT, null, null,
+                false, 100, 0, false)).items().size());
     }
 }

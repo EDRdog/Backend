@@ -47,6 +47,7 @@
 | SEC-32 | 기준값 파일이 설정되지 않았으면 SKIP 이다(실패가 아니다. 로컬 개발) | `IntegrityVerifierTest.noBaselineIsSkippedNotFailed` | `docs/design-docs/decisions/029-server-selftest-and-integrity.md` | 자동 |
 | SEC-33 | 기준값 파일을 읽을 수 없거나 형식이 틀리거나 비어 있으면 FAIL 이다 | `IntegrityVerifierTest.unreadableBaselineFails`, `IntegrityVerifierTest.malformedBaselineLineFails`, `IntegrityVerifierTest.emptyBaselineFails` | `docs/design-docs/decisions/029-server-selftest-and-integrity.md` | 자동 |
 | SEC-34 | jar 로 실행 중인데 기준값에 그 jar 가 없으면 FAIL 이다 | `IntegrityVerifierTest.runningJarMissingFromBaselineFails` | `docs/design-docs/decisions/029-server-selftest-and-integrity.md` | 자동 |
+| SEC-35 | 자체시험과 무결성 검증 결과가 실행마다 감사기록(system 행위자, tenant 없음)으로 남고, 어느 조직의 admin 조회에도 나온다 | `SelfTestServiceTest.eachRunRecordsSelfTestAndIntegrityResultsInTheAuditLog`, `AuditServiceTest.searchIncludesServerWideSystemRecords` | `docs/design-docs/decisions/029-server-selftest-and-integrity.md` | 자동 |
 
 ## 인증·세션·보안정책 (BF-01~05, BF-08, BF-12)
 

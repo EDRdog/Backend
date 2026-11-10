@@ -91,7 +91,9 @@ public class AuditService {
 
     private static Predicate[] predicates(CriteriaBuilder cb, Root<AuditRecord> r, AuditFilter f) {
         List<Predicate> p = new ArrayList<>();
-        p.add(cb.equal(r.get("tenantId"), f.tenantId()));
+        // 서버 전체 사건(자체시험·무결성)은 tenant 가 없어 어느 조직의 admin 에게나 보인다
+        p.add(cb.or(cb.equal(r.get("tenantId"), f.tenantId()),
+                cb.and(cb.isNull(r.get("tenantId")), cb.equal(r.get("actorType"), AuditActor.SYSTEM))));
         if (f.from() != null) {
             p.add(cb.greaterThanOrEqualTo(r.<Instant>get("ts"), f.from()));
         }
