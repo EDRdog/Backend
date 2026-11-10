@@ -1,0 +1,26 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_mshta_http.yml (id b98d0db6-511d-45de-ad02-e82a98729620)
+# 바꾼 것: OriginalFileName 조건을 뺐다. level 을 high 에서 medium 으로 낮췄다(알림만).
+title: Remotely Hosted HTA File Executed Via Mshta.EXE
+id: b98d0db6-511d-45de-ad02-e82a98729620
+name: mshta_remote_hta
+status: test
+description: 'Detects execution of the "mshta" utility with an argument containing the "http" keyword, which could indicate that an attacker is executing a remotely hosted malicious hta file'
+author: 'Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.execution
+  - attack.stealth
+  - attack.t1218.005
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\mshta.exe'
+  selection_cli:
+    CommandLine|contains:
+      - 'http://'
+      - 'https://'
+      - 'ftp://'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: medium

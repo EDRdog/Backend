@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_bcdedit_susp_execution.yml (id c9fbe8e9-119d-40a6-9b59-dd58a5d84429)
+# 바꾼 것: OriginalFileName 조건을 뺐다. MITRE 첫 태그를 t1542.003 으로 올렸다.
+title: Potential Ransomware or Unauthorized MBR Tampering Via Bcdedit.EXE
+id: c9fbe8e9-119d-40a6-9b59-dd58a5d84429
+name: bcdedit_boot_tamper
+status: test
+description: 'Detects potential malicious and unauthorized usage of bcdedit.exe'
+author: '@neu5ron'
+tags:
+  - attack.persistence
+  - attack.t1542.003
+  - attack.stealth
+  - attack.t1070
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\bcdedit.exe'
+  selection_cli:
+    CommandLine|contains:
+      - 'delete'
+      - 'deletevalue'
+      - 'import'
+      - 'safeboot'
+      - 'network'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

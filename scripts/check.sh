@@ -13,5 +13,9 @@ cd "$(dirname "$0")/.."
 ./gradlew test
 (cd agent && go test ./...)
 
+# detector 룰 ConfigMap 이 룰 파일과 같은지. 어긋나면 운영은 옛 룰을 쓴다.
+scripts/gen-rules-configmap.sh | diff -q - k8s/detector-rules.yaml >/dev/null \
+  || { echo "k8s/detector-rules.yaml 이 룰 파일과 다르다: scripts/gen-rules-configmap.sh > k8s/detector-rules.yaml" >&2; exit 1; }
+
 # 문서 (ERD 상태 칸, 테스트 참조)
 scripts/check-docs.sh

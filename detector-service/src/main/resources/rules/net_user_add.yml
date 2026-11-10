@@ -1,0 +1,26 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_net_user_add.yml (id cd219ff3-fa99-45d4-8380-a7d15116c6dc)
+# 바꾼 것: OriginalFileName 조건을 뺐다.
+title: New User Created Via Net.EXE
+id: cd219ff3-fa99-45d4-8380-a7d15116c6dc
+name: net_user_add
+status: test
+description: 'Identifies the creation of local users via the net.exe command.'
+author: 'Endgame, JHasenbusch (adapted to Sigma for oscd.community)'
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith:
+      - '\net.exe'
+      - '\net1.exe'
+  selection_cli:
+    CommandLine|contains|all:
+      - 'user'
+      - 'add'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

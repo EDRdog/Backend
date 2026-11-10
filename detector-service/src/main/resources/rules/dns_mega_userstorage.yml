@@ -1,0 +1,20 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/dns_query/dns_query_win_mega_nz.yml (id 613c03ba-0779-4a53-8a1f-47f914a4ded3)
+# 바꾼 것: 없음.
+title: DNS Query To MEGA Hosting Website
+id: 613c03ba-0779-4a53-8a1f-47f914a4ded3
+name: dns_mega_userstorage
+status: test
+description: 'Detects DNS queries for subdomains related to MEGA sharing website'
+author: 'Aaron Greetham (@beardofbinary) - NCC Group'
+tags:
+  - attack.exfiltration
+  - attack.t1567.002
+logsource:
+  category: dns_query
+detection:
+  selection:
+    QueryName|contains: 'userstorage.mega.co.nz'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

