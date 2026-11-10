@@ -3,6 +3,7 @@
 package sensor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -199,5 +200,89 @@ func TestESLoggerSensorFiltersFileEventsByWatchPaths(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("이벤트가 오지 않았다")
+	}
+}
+
+// 상한을 넘는 줄 하나가 센서를 멈추면 안 된다. 그 줄만 건너뛰고 뒤의 줄을 계속 읽어야 한다(KISA H8).
+func TestESLoggerPumpSkipsOverlongLineAndContinues(t *testing.T) {
+	good := eslExecLine("/bin/zsh", "/usr/bin/whoami", `["whoami"]`)
+	huge := strings.Repeat("a", eslMaxLineBytes+1024)
+	input := good + "\n" + huge + "\n" + good + "\n"
+
+	var logs bytes.Buffer
+	s := eslQuietSensor("", nil)
+	s.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	out := make(chan event.Event, 8)
+	lines, err := s.pump(context.Background(), strings.NewReader(input), nil, out)
+	if err != nil {
+		t.Fatalf("pump = %v, want nil", err)
+	}
+	if lines != 3 {
+		t.Errorf("lines = %d, want 3", lines)
+	}
+	if len(out) != 2 {
+		t.Errorf("이벤트 = %d 건, want 2 (긴 줄 앞뒤 두 건)", len(out))
+	}
+	if !strings.Contains(logs.String(), "skipped=1") {
+		t.Errorf("건너뛴 줄이 로그에 남지 않았다: %s", logs.String())
+	}
+}
+
+// 줄바꿈 없이 끝나는 마지막 줄도 읽는다.
+func TestESLoggerPumpReadsLastLineWithoutNewline(t *testing.T) {
+	good := eslExecLine("/bin/zsh", "/usr/bin/whoami", `["whoami"]`)
+	out := make(chan event.Event, 2)
+	if _, err := eslQuietSensor("", nil).pump(context.Background(), strings.NewReader(good), nil, out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Errorf("이벤트 = %d 건, want 1", len(out))
+	}
+}
+
+// pump 이 자식이 살아 있는 채로 끝나도(stdout 만 닫은 경우) 센서가 영원히 막히면 안 된다.
+// 예전에는 <-drained 에서 stderr EOF 를 기다리며 멈췄다.
+func TestESLoggerSensorDoesNotHangWhenPumpEndsWhileChildAlive(t *testing.T) {
+	bin := eslFakeLogger(t, "exec 1>&-\nexec sleep 30")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- eslQuietSensor(bin, nil).Run(ctx, make(chan event.Event, 1)) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("한 줄도 못 읽었는데 오류가 없다")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("pump 이 끝났는데 센서가 멈춰 있다")
+	}
+}
+
+// 상한을 넘는 줄이 끼어도 자식은 계속 읽히고 이후 이벤트가 나온다.
+func TestESLoggerSensorSurvivesOverlongLine(t *testing.T) {
+	good := eslExecLine("/bin/zsh", "/usr/bin/whoami", `["whoami"]`)
+	payload := filepath.Join(t.TempDir(), "lines.json")
+	data := good + "\n" + strings.Repeat("a", eslMaxLineBytes+1024) + "\n" + good + "\n"
+	if err := os.WriteFile(payload, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := eslFakeLogger(t, "cat "+payload+"\nsleep 30")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	out := make(chan event.Event, 4)
+	go func() { _ = eslQuietSensor(bin, nil).Run(ctx, out) }()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-out:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%d 번째 이벤트가 오지 않았다", i+1)
+		}
 	}
 }

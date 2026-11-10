@@ -208,6 +208,8 @@ handshake 가 끝난 뒤에 나가고 연결 이벤트는 커널이 SYN 을 낼 
 EndpointSecurity API 를 직접 부르려면 애플의 entitlement 심사를 통과해야 한다. `/usr/bin/eslogger`
 는 그 권한을 이미 가진 애플 서명 바이너리라, 심사 없이 같은 이벤트를 받을 수 있다. 에이전트는
 `eslogger --format json exec create rename unlink` 를 띄워 stdout 을 줄 단위로 읽는다.
+한 줄이 4MB 를 넘으면 그 줄만 건너뛰고(개수는 로그에 남는다) 계속 읽는다. 읽기가 끝나면 자식을 먼저
+죽이므로 센서가 대기하다 멎는 일은 없다(`docs/design-docs/decisions/023-skip-overlong-eslogger-line.md`).
 
 네트워크만 다르다. **EndpointSecurity API 에는 소켓 연결 이벤트가 없다.** 그래서 `libproc` 로
 프로세스별 열린 TCP 소켓을 주기마다 훑고, 직전 스냅샷에 없던 것만 새 연결로 본다. 첫 스냅샷은

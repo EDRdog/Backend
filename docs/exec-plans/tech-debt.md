@@ -11,6 +11,7 @@
 | 에이전트 송신 상한이 단말당 초당 100건 | `agent/internal/runtime/runtime.go` | 5초마다 `Drain(500)` 한 배치만 보낸다. 공격 피크(약 480건/초)면 버퍼 1만 건이 약 26초 뒤 넘쳐 오래된 것부터 버린다. 병목이 브로커가 아니라 에이전트다 | 2026-09-23 |
 | 전송이 막히면 수집도 멈춘다 | `agent/internal/runtime/runtime.go` | flush 가 Run 루프에서 동기로 돈다(HTTP 타임아웃 5초 = FlushInterval). 막히면 채널(500)이 약 1분 안에 차고 센서가 멈춰 OS 단에서 유실된다 | 2026-09-23 |
 | S3 아카이빙이 기본 OFF | `archiver-service` `ARCHIVE_ENABLED` | 운영에서 꺼져 있어 TTL 7일이 지난 원본은 복구할 수 없다 | 2026-10-04 |
+| 센서가 죽어도 에이전트가 재기동하지 않는다 (KISA F3) | `agent/internal/runtime/runtime.go` | 센서 Run 이 오류로 끝나면 그 센서만 조용히 사라지고 하트비트는 계속 나간다. eslogger 는 한 줄이라도 읽은 뒤에는 센서 안에서 재기동하지만(`eslogger_darwin.go`), 한 줄도 못 읽고 끝난 경우와 다른 센서(ETW, netsnap, l7)에는 이 보호가 없다. 런타임 차원의 센서 재기동은 설계가 필요해 H8 수정에서 제외했다 | 2026-11-10 |
 
 ## 성능
 
