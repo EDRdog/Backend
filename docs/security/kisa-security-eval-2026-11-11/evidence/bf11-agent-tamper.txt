@@ -1,0 +1,6 @@
+시각 2026-11-11 06:36:15 에이전트 host kisa-eval-mac, 설정 파일 config.json 권한 0o600, sha256(앞 12자) 9385bbd089c2, 사본 보관(sha256 앞 12자 9385bbd089c2)
+[0] 변조 전 최근 integrity_check: 06:35:40 success, 06:34:40 success
+[1] 2026-11-11 06:36:15 config.json 끝에 빈 줄 하나를 더했다. 권한 0o600, sha256(앞 12자) 4c3f1b738574
+[2] 실패 감사기록 도착 06:36:40 (변조 후 25초) | result=failure | binary_integrity=ok(sha256=2cface0652b4...); config_integrity=fail(기준값과 다르다 (기준 9385bbd089c2..., 현재 4c3f1b738574...))
+[3] 2026-11-11 06:36:46 원래대로 되돌림. 권한 0o600, sha256(앞 12자) 9385bbd089c2, 원본과 같음: True
+[4] 되돌린 뒤 PASS 감사기록 06:37:40 | binary_integrity=ok(sha256=2cface0652b4...); config_integrity=ok(sha256=9385bbd089c2...)

@@ -1,0 +1,33 @@
+시각 2026-11-11 06:34:49 로컬 collector 에이전트 TLS 포트(9443). 요약 줄만 발췌.
+
+$ openssl s_client -connect localhost:9443 </dev/null  (기본 협상)
+depth=0 CN = localhost
+depth=0 CN = localhost
+subject=/CN=localhost
+issuer=/CN=localhost
+New, TLSv1/SSLv3, Cipher is AEAD-CHACHA20-POLY1305-SHA256
+Server public key is 2048 bit
+    Protocol  : TLSv1.3
+    Cipher    : AEAD-CHACHA20-POLY1305-SHA256
+    Verify return code: 18 (self signed certificate)
+
+$ openssl s_client -connect localhost:9443 -tls1_2 </dev/null
+verify error:num=18:self signed certificate
+New, TLSv1/SSLv3, Cipher is ECDHE-RSA-CHACHA20-POLY1305
+    Protocol  : TLSv1.2
+
+$ openssl s_client -connect localhost:9443 -tls1_3 </dev/null
+verify error:num=18:self signed certificate
+New, TLSv1/SSLv3, Cipher is AEAD-CHACHA20-POLY1305-SHA256
+    Protocol  : TLSv1.3
+
+$ openssl s_client -connect localhost:9443 -tls1_1 </dev/null
+거절: tlsv1 alert protocol version (서버가 protocol version 경고로 거절) SSL alert number 70
+New, (NONE), Cipher is (NONE)
+    Protocol  : TLSv1.1
+
+$ openssl s_client -connect localhost:9443 -tls1 </dev/null
+거절: tlsv1 alert protocol version (서버가 protocol version 경고로 거절) SSL alert number 70
+New, (NONE), Cipher is (NONE)
+    Protocol  : TLSv1
+

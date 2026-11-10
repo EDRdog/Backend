@@ -1,0 +1,11 @@
+시험 시각 2026-11-11 06:30:39  대상: admin 이 만든 viewer 계정(첫 패스워드는 admin 이 정했다)
+[1] 첫 로그인 | HTTP 200 | {"userId": 12, "tenantId": 8, "email": "forcev1794346077@example.com", "role": "viewer", "mustChangePassword": true, "token": "(토큰 생략)"}
+[2] GET /api/alerts (강제 변경 중) | HTTP 403 | {"error":"패스워드를 변경해야 다른 기능을 쓸 수 있습니다","code":"password_change_required"}
+[3] GET /api/hosts (강제 변경 중) | HTTP 403 | {"error":"패스워드를 변경해야 다른 기능을 쓸 수 있습니다","code":"password_change_required"}
+[4] GET /api/auth/me (허용 경로) | HTTP 200 | {"userId":12,"tenantId":8,"email":"forcev1794346077@example.com","role":"viewer","mustChangePassword":true}
+[5] POST /api/auth/password 약한 새 비밀번호 Ab1!ab1! | HTTP 400 | {"error":"패스워드는 9자 이상이어야 합니다"}
+[6] POST /api/auth/password 현재 비밀번호와 같은 값 | HTTP 400 | {"error":"직전에 사용한 패스워드는 다시 쓸 수 없습니다"}
+[7] POST /api/auth/password 규칙 충족 새 값 | HTTP 204 | 
+[8] 변경한 비밀번호로 로그인 | HTTP 200 | {"userId": 12, "tenantId": 8, "email": "forcev1794346077@example.com", "role": "viewer", "mustChangePassword": false, "token": "(토큰 생략)"}
+[9] GET /api/alerts (변경 뒤) | HTTP 200 | []
+[10] 옛 비밀번호로 로그인 | HTTP 401 | {"error":"이메일 또는 비밀번호가 올바르지 않습니다"}

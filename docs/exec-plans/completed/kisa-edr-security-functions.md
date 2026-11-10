@@ -53,4 +53,16 @@ KISA EDR 성능평가 항목 V1.4(`docs/security/kisa-edr-performance-criteria.m
 
 ## 결과
 
-(평가 후 적는다)
+2026-11-11 완료. 판정과 증거는 `docs/security/kisa-security-eval-2026-11-11/README.md`.
+
+| 묶음 | PR |
+|---|---|
+| 서버 자체점검 | Backend #319 |
+| 감사기록 | Backend #320 |
+| 에이전트 자체시험·무결성·감사기록 | Backend #321 |
+| 접근통제 | Backend #322 |
+| 인증·세션·보안정책 | Backend #323 |
+| 평가 후속(능동 통보, 요청자 가림, webhook 비우기) | Backend #324 |
+| 관리 화면 | Frontend #105 |
+
+로컬 자체 시험 기준 실패 0, 부분 0(통과 29, 해당 없음 1, 범위 밖 2, 측정 1). BF-09.2 는 원문 단서에 따라 서버 서비스를 한 구성요소로 보고 통과로 판정했다(사용자 결정). 남은 한계는 서버 내부 http 와 IP 제한 조직 이메일 존재 노출.

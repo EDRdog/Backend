@@ -1,6 +1,6 @@
 # 보안 기능 (KISA EDR 성능평가 항목 V1.4 보안 기능, `docs/security/kisa-edr-performance-criteria.md`)
 
-관리 서버와 에이전트가 제품 자체를 지키려고 성립해야 하는 것. 계획은 `docs/exec-plans/active/kisa-edr-security-functions.md`.
+관리 서버와 에이전트가 제품 자체를 지키려고 성립해야 하는 것. 계획은 `docs/exec-plans/completed/kisa-edr-security-functions.md`.
 
 ## 감사기록 (BF-13)
 

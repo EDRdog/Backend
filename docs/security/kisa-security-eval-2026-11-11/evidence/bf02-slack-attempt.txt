@@ -1,0 +1,5 @@
+시험 시각 2026-11-11 06:29:10 (로컬 시간)
+조직 webhook: https://localhost:9987/slack-eval (로컬에는 Slack 도 https 수신기도 없다. 발송 시도 여부만 본다)
+연속 5회 실패로 계정이 잠기자 api-service 가 webhook 으로 POST 를 시도했고, 연결이 거부되어 경고 로그가 남았다(로그인 흐름은 깨지지 않았다).
+api-service 로그 해당 줄:
+2026-11-11T06:29:10.949+09:00  WARN 98317 --- [api] [nPool-worker-14] [                                                 ] com.edrdog.apiservice.auth.AuthService   : 계정 잠금 통보 실패 tenant=8 err=org.springframework.web.client.ResourceAccessException: I/O error on POST request for "https://localhost:9987/slack-eval": Connection refused
