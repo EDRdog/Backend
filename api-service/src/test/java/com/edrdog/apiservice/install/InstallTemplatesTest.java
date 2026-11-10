@@ -95,6 +95,20 @@ class InstallTemplatesTest {
         assertFalse(win.contains("if ($want)"), "windows 원본이 해시가 있을 때만 대조한다");
     }
 
+    @Test
+    void templatesRecordIntegrityBaselineAfterWritingConfig() {
+        // 기준값이 없으면 에이전트의 무결성 검증이 처음부터 실패로 남는다(ADR 030).
+        String mac = scripts.macos();
+        String win = scripts.windows();
+
+        assertTrue(mac.indexOf("-record-baseline") > mac.indexOf("chmod 600 \"$CONFIG_PATH\""),
+                "macOS 원본이 설정 파일을 쓰기 전에 기준값을 기록한다");
+        assertTrue(mac.contains("-record-baseline || fail"), "macOS 원본이 기준값 기록 실패를 넘긴다");
+        assertTrue(win.indexOf("-record-baseline") > win.indexOf("WriteAllText($ConfigPath"),
+                "windows 원본이 설정 파일을 쓰기 전에 기준값을 기록한다");
+        assertTrue(win.contains("@($ConfigPath, $BaselinePath)"), "windows 원본이 기준값 파일에 ACL 을 안 건다");
+    }
+
     private static void assertNoPlaceholderLeft(String out) {
         assertFalse(out.contains("{{"), "안 채운 자리표시자가 남았다: "
                 + out.replaceAll("(?s).*?(\\{\\{[A-Z_]*}}).*", "$1"));

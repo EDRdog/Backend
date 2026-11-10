@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/2026-Siheung-Bootcamp-Team-I/Backend/agent/internal/audit"
 	"github.com/2026-Siheung-Bootcamp-Team-I/Backend/agent/internal/event"
 )
 
@@ -78,6 +79,13 @@ func newStub(t *testing.T) *stub {
 	})
 
 	mux.HandleFunc("/api/agent/command-result", func(w http.ResponseWriter, r *http.Request) {
+		if !s.authed(t, r, w) {
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/api/agent/audit", func(w http.ResponseWriter, r *http.Request) {
 		if !s.authed(t, r, w) {
 			return
 		}
@@ -405,6 +413,44 @@ func TestReportCommandSendsResult(t *testing.T) {
 	body := s.calls("/api/agent/command-result")[0].body
 	if body["command_id"] != "c1" || body["status"] != StatusKilled {
 		t.Errorf("결과 본문 = %v", body)
+	}
+}
+
+func TestSendAuditPostsEventsWithNodeKey(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+
+	err := c.SendAudit(context.Background(), []audit.Event{
+		{TS: 1785341400000, Type: audit.TypeAgentStart, Result: audit.Success, Detail: "v0.1.0"},
+	})
+	if err != nil {
+		t.Fatalf("SendAudit: %v", err)
+	}
+
+	call := s.calls("/api/agent/audit")[0]
+	if call.nodeKey != "key-1" {
+		t.Errorf("node_key 헤더 = %q", call.nodeKey)
+	}
+	events, ok := call.body["events"].([]any)
+	if !ok || len(events) != 1 {
+		t.Fatalf("events = %#v", call.body["events"])
+	}
+	first := events[0].(map[string]any)
+	if first["type"] != "agent_start" || first["result"] != "success" || first["detail"] != "v0.1.0" {
+		t.Errorf("감사기록 본문 = %v", first)
+	}
+}
+
+func TestSendAuditFailsOnServerError(t *testing.T) {
+	s := newStub(t)
+	c := enrolled(t, s)
+	s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+
+	err := c.SendAudit(context.Background(), []audit.Event{{Type: audit.TypeAgentStart, Result: audit.Success}})
+	if err == nil {
+		t.Fatal("503 은 오류로 올라와야 한다. 그래야 로그가 기록을 되돌린다")
 	}
 }
 

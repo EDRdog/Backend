@@ -73,6 +73,10 @@
 |---|---|---|---|
 | 에이전트 바이너리에 서명이 없다 | `.github/workflows/agent-release.yml`, `api-service/.../install/` | 설치 스크립트가 보는 `.sha256` 은 바이너리와 같은 GitHub Release 에서 온다. 릴리스를 바꿀 수 있는 쪽은 해시도 바꾸므로, 해시는 끊긴 다운로드만 막는다. cosign·minisign 서명과 공개키 고정이 남은 틈이다(KISA H7, ADR 024) | 2026-11-10 |
 | 이미 깔린 기기의 `server.pem` 은 TOFU 로 받은 것이다 | 엔드포인트 `/etc/edrdog/server.pem`, `C:\ProgramData\EDRdog\server.pem` | 지문 대조는 2026-11-10 이후 설치부터다. 그 전에 깐 기기는 운영자 지문과 직접 대조해 봐야 안다(ADR 024 결과/영향) | 2026-11-10 |
+| 에이전트 무결성 기준값을 관리자 권한 위변조자가 같이 바꿀 수 있다 | `agent/internal/selfcheck/integrity.go`, `integrity.json` | 기준값이 에이전트와 같은 기기에 있다. root·SYSTEM 은 바이너리와 기준값을 함께 바꿀 수 있어 로컬 비교는 그것을 못 잡는다. 통과한 항목의 현재 해시가 감사기록으로 서버에 남아 사후 대조는 된다. 막으려면 서버가 하트비트로 판번호별 기대 해시를 내려주고, 에이전트가 그것과 비교해야 한다(ADR 030 의 버린 대안 첫 줄) | 2026-11-11 |
+| Windows 에서 설정 파일 ACL 을 에이전트가 다시 읽어 확인하지 않는다 | `agent/internal/selfcheck/perm_windows.go` | 자체시험의 `config_permission`, `ca_cert_permission` 이 Windows 에서 `skip` 이다. 설치 스크립트가 거는 ACL 이 나중에 풀려도 에이전트가 모른다. `x/sys/windows` 의 `GetNamedSecurityInfo` 로 DACL 을 읽어야 한다 | 2026-11-11 |
+| 서버에서 에이전트에 자체시험을 요청하는 경로가 없다 | `agent/cmd/edrdog-agent/main.go` | KISA BF-10 의 관리자 요청은 엔드포인트에서 `-security-check` 를 돌리는 것으로만 된다. 서버 화면에서 요청하려면 responder 에 새 명령 종류(`self_check`)를 발행하는 API 와 에이전트 명령 루프의 처리가 필요하다 | 2026-11-11 |
+| 감사기록이 에이전트 메모리에만 있다 | `agent/internal/audit/audit.go` | 서버가 닿지 않는 채로 에이전트가 죽으면(SIGKILL, 전원 차단) 못 보낸 감사기록과 `agent_stop` 이 사라진다. 상한은 1000건이고 넘치면 오래된 것부터 버린다. 응답이 유실되면 같은 배치가 중복으로 들어간다 | 2026-11-11 |
 
 ## 측정값 전제
 

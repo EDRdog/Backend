@@ -4,7 +4,7 @@
 # 하는 일:
 #   1. 에이전트 바이너리를 /usr/local/bin 에 놓는다
 #   2. 수집 서버에서 서버 인증서를 받아, 운영자에게 받은 SHA-256 지문과 같을 때만 저장한다
-#   3. 설정 파일을 만든다(enroll secret 포함, 0600)
+#   3. 설정 파일을 만들고(enroll secret 포함, 0600) 바이너리와 설정 파일의 무결성 기준값을 기록한다
 #   4. LaunchDaemon 으로 등록해 부팅 시 자동 기동시킨다
 #
 # 못 하는 일:
@@ -96,6 +96,9 @@ cat > "$CONFIG_PATH" <<EOF
 EOF
 chmod 600 "$CONFIG_PATH"
 umask 022
+# 무결성 기준값. 에이전트가 기동 시와 주기마다 바이너리와 설정 파일을 이 값과 비교한다(ADR 030).
+# 정당한 교체는 이 스크립트를 다시 돌리는 것이라 기준값도 같이 새로 기록된다.
+"$BIN_PATH" -config "$CONFIG_PATH" -record-baseline || fail "무결성 기준값을 기록하지 못했다"
 mkdir -p "$LOG_DIR"
 
 echo "[4/4] LaunchDaemon 등록"

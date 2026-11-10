@@ -247,3 +247,40 @@ func TestRunKeepsGoingAfterHeartbeatFailure(t *testing.T) {
 		t.Errorf("하트비트 %d 회, 실패해도 계속 시도해야 한다", beats)
 	}
 }
+
+// 대응 명령 실행 결과는 감사 사건이다(KISA BF-13). 결과를 훅으로 알린다.
+func TestOnResultIsCalledForExecutedCommand(t *testing.T) {
+	c := &fakeClient{queue: [][]transport.Command{{
+		{ID: "c1", Type: transport.CommandKillProcess, Target: "/tmp/evil.sh"},
+	}}}
+	var got []transport.CommandResult
+	var gotCmd []transport.Command
+	l := New(c, &fakeKiller{status: transport.StatusFailed}, Options{
+		Interval: time.Hour,
+		OnResult: func(cmd transport.Command, r transport.CommandResult) {
+			gotCmd = append(gotCmd, cmd)
+			got = append(got, r)
+		},
+	})
+
+	if err := l.poll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Status != transport.StatusFailed || gotCmd[0].Target != "/tmp/evil.sh" {
+		t.Fatalf("훅 호출 = %+v %+v", gotCmd, got)
+	}
+}
+
+// 서버가 같은 명령을 다시 주면 결과 보고는 다시 하지만 실행은 안 했으므로 감사기록을 또 남기지 않는다.
+func TestOnResultIsNotRepeatedForReplayedCommand(t *testing.T) {
+	cmd := transport.Command{ID: "c1", Type: transport.CommandKillProcess, Target: "x"}
+	c := &fakeClient{queue: [][]transport.Command{{cmd}, {cmd}}}
+	calls := 0
+	l := New(c, &fakeKiller{}, Options{Interval: time.Hour, OnResult: func(transport.Command, transport.CommandResult) { calls++ }})
+
+	_ = l.poll(context.Background())
+	_ = l.poll(context.Background())
+	if calls != 1 {
+		t.Fatalf("훅 호출 %d 회, want 1", calls)
+	}
+}

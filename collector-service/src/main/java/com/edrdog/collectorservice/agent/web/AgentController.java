@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 에이전트 수집 API(enroll/heartbeat/events/command-result). 자체 enroll_secret/node_key 로 인증한다.
+ * 에이전트 수집 API(enroll/heartbeat/events/audit/command-result). 자체 enroll_secret/node_key 로 인증한다.
  * 인증 실패는 전부 HTTP 401 이다. 200 본문에 실패를 담으면 에이전트가 node_key 를 버리고 재등록하지 못한다.
  */
 @RestController
@@ -62,6 +62,18 @@ public class AgentController {
         // 보고한 노드를 같이 넘겨야 responder 가 남의 명령에 온 보고를 걸러낸다
         responder.reportCommandResult(String.valueOf(node.getTenantId()), node.getHostIdentifier(),
                 req.commandId(), req.status(), req.message());
+    }
+
+    /**
+     * 에이전트 감사기록(시작·종료, 센서 정지, 자체시험·무결성 결과, 대응 명령 결과, 서버 등록)을 받아 api-service 로 넘긴다.
+     * tenant 와 host 는 본문이 아니라 node_key 로 푼 노드의 값이다.
+     */
+    @PostMapping("/audit")
+    public EventsResponse audit(
+            @RequestHeader(name = NODE_KEY_HEADER, required = false) String nodeKey,
+            @RequestBody AuditRequest req) {
+        AgentNode node = authenticate(nodeKey);
+        return new EventsResponse(service.audit(node, req.events()));
     }
 
     /** node_key 를 풀어 노드를 돌려준다. 유효하지 않으면 401(AuthExceptionHandler 가 매핑). */

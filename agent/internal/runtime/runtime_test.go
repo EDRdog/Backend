@@ -215,3 +215,44 @@ func TestRunKeepsGoingWhenOneSensorStops(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 }
+
+// 자체시험(KISA BF-10)이 센서가 살아 있는지 물을 수 있어야 한다. 하나만 멈춰도 그 관측이 조용히 사라진다.
+func TestSensorStateReportsStoppedSensors(t *testing.T) {
+	r := New(&fakeSender{}, Options{BatchSize: 10, FlushInterval: time.Hour})
+	alive := &fakeSensor{name: "alive", emit: 0, ended: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx, []Sensor{failingSensor{"dead"}, alive}) }()
+
+	waitFor(t, func() bool {
+		total, stopped := r.SensorState()
+		return total == 2 && len(stopped) == 1 && stopped[0] == "dead"
+	})
+	cancel()
+	<-done
+}
+
+// 센서 정지는 감사 사건이다. 멈춘 이름을 훅으로 알려야 한다.
+func TestOnSensorStopReceivesSensorName(t *testing.T) {
+	stopped := make(chan string, 1)
+	r := New(&fakeSender{}, Options{
+		BatchSize: 10, FlushInterval: time.Hour,
+		OnSensorStop: func(name string, err error) { stopped <- name },
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- r.Run(ctx, []Sensor{failingSensor{"dead"}, &fakeSensor{name: "alive", ended: make(chan struct{})}})
+	}()
+
+	select {
+	case name := <-stopped:
+		if name != "dead" {
+			t.Fatalf("멈춘 센서 이름 = %q", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("훅이 불리지 않았다")
+	}
+	cancel()
+	<-done
+}

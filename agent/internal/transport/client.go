@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/2026-Siheung-Bootcamp-Team-I/Backend/agent/internal/audit"
 	"github.com/2026-Siheung-Bootcamp-Team-I/Backend/agent/internal/event"
 )
 
@@ -187,6 +188,16 @@ func (c *Client) setPrevSend(d time.Duration) {
 func (c *Client) ReportCommand(ctx context.Context, result CommandResult) error {
 	return c.authed(ctx, func(nodeKey string) error {
 		return c.post(ctx, "/api/agent/command-result", nodeKey, result, nil)
+	})
+}
+
+// SendAudit 은 감사기록 배치를 보낸다. 실패는 그대로 올린다. 호출자(audit.Log)가 되돌려야 기록이 사라지지 않는다.
+func (c *Client) SendAudit(ctx context.Context, events []audit.Event) error {
+	body := struct {
+		Events []audit.Event `json:"events"`
+	}{events}
+	return c.authed(ctx, func(nodeKey string) error {
+		return c.post(ctx, "/api/agent/audit", nodeKey, body, nil)
 	})
 }
 
