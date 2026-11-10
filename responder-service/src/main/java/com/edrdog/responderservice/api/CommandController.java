@@ -16,7 +16,8 @@ import java.util.List;
 /**
  * 에이전트 명령 채널. 에이전트는 collector-service 만 알고, collector 가 이 경로로 프록시한다.
  *
- * <p>responder 는 클러스터 안에서만 열리고 앱 인증이 없다. 바깥 노출은 collector/api-service 프록시 경로뿐이다.
+ * <p>responder 는 클러스터 안에서만 열리고, 모든 요청은 {@link InternalKeyFilter} 의 X-Internal-Key 검사를 거친다.
+ * 바깥 노출은 collector/api-service 프록시 경로뿐이다.
  */
 @RestController
 @RequestMapping("/api/responder/commands")

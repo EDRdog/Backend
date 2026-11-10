@@ -52,6 +52,20 @@ host 이름은 조직마다 겹칠 수 있다. 명령은 (tenant, host) 로 넣�
 | RSP-30 | 대상이 없는 알림(대상 저장 전 알림)의 respond 는 400 이다 | `AlertApiIntegrationTest.respond_noAlertTarget_400` | `docs/security/kisa-2021-review.md` H3 | 자동 |
 | RSP-31 | 알림의 대상이 Kafka 소비를 건너 적재까지 살아남는다 | `AlertIngestListenerKafkaTest` 의 적재 케이스 | `docs/security/kisa-2021-review.md` H3 | 자동 |
 
+## 내부 API 인증 (KISA H5)
+
+responder 의 `/api/responder/**` 는 클러스터 안 파드라면 누구나 kill 을 넣을 수 있었다. 인증은 필터 한 곳에서 한다. 근거는 `docs/design-docs/decisions/022-responder-internal-key.md`.
+
+| ID | 성립해야 할 것 | 검증 | 출처 | 상태 |
+|---|---|---|---|---|
+| RSP-32 | `X-Internal-Key` 가 없거나 틀리면 kill 요청은 401 이고 명령을 만들지 않는다 | `InternalKeyFilterTest.키가_없으면_kill_은_401_이고_명령을_만들지_않는다`, `InternalKeyFilterTest.키가_틀리면_kill_은_401` | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-33 | 키가 없거나 틀리면 kill 결과 조회는 401 이다 | `InternalKeyFilterTest.키가_없거나_틀리면_kill_결과_조회는_401` | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-34 | 키가 없거나 틀리면 대기 명령 조회는 401 이고 큐를 비우지 않는다 | `InternalKeyFilterTest.키가_없거나_틀리면_대기_명령_조회는_401_이고_큐를_비우지_않는다` | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-35 | 키가 없거나 틀리면 명령 결과 보고는 401 이고 반영하지 않는다 | `InternalKeyFilterTest.키가_없거나_틀리면_명령_결과_보고는_401_이고_반영하지_않는다` | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-36 | 키가 맞으면 네 경로 모두 통과한다. 프로브 경로는 필터가 막지 않는다 | `InternalKeyFilterTest.키가_맞으면_통과한다`, `InternalKeyFilterTest.프로브_경로는_키_없이도_401_이_아니다` | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-37 | api-service 가 kill 요청과 결과 조회에 키를 싣는다 | `ResponderClientTest.kill_과_결과_조회는_X_Internal_Key_를_싣는다` (api-service) | `docs/security/kisa-2021-review.md` H5 | 자동 |
+| RSP-38 | collector 가 대기 명령 조회와 결과 전달에 키를 싣는다 | `ResponderClientTest.대기_명령_조회는_X_Internal_Key_를_싣는다`, `ResponderClientTest.명령_결과_전달은_X_Internal_Key_를_싣는다` (collector-service) | `docs/security/kisa-2021-review.md` H5 | 자동 |
+
 ## 권고 (dry-run)
 
 | ID | 성립해야 할 것 | 검증 | 출처 | 상태 |

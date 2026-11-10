@@ -39,6 +39,10 @@
 
 | 항목 | 위치 | 영향 | 발견일 |
 |---|---|---|---|
+| detector `/api/events` 에 인증이 없다 | `detector-service/.../api/IngestController.java` | 클러스터 안 파드가 임의 이벤트를 detector 에 넣을 수 있다. responder 는 `X-Internal-Key` 로 막았지만(ADR 019) 여기는 그대로다. KISA H5 의 남은 부분 | 2026-11-10 |
+| Kafka 가 무인증 PLAINTEXT 다 | `k8s/kafka.yaml` | 클러스터 안 파드가 `events`·`alerts` 를 읽고 쓸 수 있다. `alerts` 를 직접 넣으면 responder 가 kill 명령을 만든다(실행 스위치가 켜져 있을 때). KISA H5 의 남은 부분 | 2026-11-10 |
+| NetworkPolicy 가 없다 | `k8s/` | 파드끼리 제한 없이 통신한다. 내부 키가 유일한 방어선이고, 키가 새면 그 위로 막을 층이 없다 | 2026-11-10 |
+| 내부 키 기본값이 `dev-internal-key` 다 | 각 서비스 `application.yml` 의 `edrdog.internal.key` | `INTERNAL_API_KEY` 를 주입하지 못한 서비스는 공개된 기본값으로 뜬다. responder 도 같은 방식이다(다른 서비스와 맞췄다). 기본값을 없애는 건 KISA 2-6 에서 따로 다룬다 | 2026-11-10 |
 | detector 상태가 tenant 를 가리지 않는다 | `detector-service/.../kafkastreams/topology/` 상태 키와 `events` 파티션 키(둘 다 host) | 서로 다른 tenant 에 같은 host 이름의 기기가 있으면 상관 버퍼를 같이 쓴다. 한쪽 이벤트가 다른 쪽 판정의 근거가 되거나 판정을 가린다. 알림의 tenant·target 은 트리거 이벤트를 따르므로 kill 은 트리거 쪽 기기로만 간다. 키를 `tenant\|host` 로 바꾸면 파티션 배치가 달라져 미뤘다(`README.md` 의 파티션 키 절) | 2026-11-10 |
 
 ## 입력 상한

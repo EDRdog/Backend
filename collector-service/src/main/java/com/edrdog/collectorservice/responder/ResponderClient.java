@@ -22,8 +22,10 @@ public class ResponderClient {
 
     private final RestClient http;
 
-    public ResponderClient(@Value("${edrdog.responder.url}") String baseUrl) {
-        this.http = RestClient.builder().baseUrl(baseUrl).build();
+    public ResponderClient(@Value("${edrdog.responder.url}") String baseUrl,
+                           @Value("${edrdog.internal.key}") String internalKey) {
+        // 모든 요청에 내부 키를 싣는다. responder 는 이 헤더가 없으면 401 이다(KISA H5)
+        this.http = RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Internal-Key", internalKey).build();
     }
 
     /** tenant 의 host 에 대기 중인 대응 명령을 responder 에서 가져온다. 여기서 예외를 올리면 하트비트가 실패해 수집까지 멈춘다. */

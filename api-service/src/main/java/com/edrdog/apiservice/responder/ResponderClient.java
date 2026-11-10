@@ -15,7 +15,7 @@ import java.util.Optional;
 
 /**
  * responder-service 내부 API 호출 래퍼(kill 위임).
- * responder 에는 앱 레벨 인증이 없어, 접근 통제는 이 프록시의 Bearer 세션 인증 + tenant 소유 검증(AlertController)이 전부다.
+ * responder 는 X-Internal-Key 로 호출자를 인증한다(KISA H5). 사용자 쪽 통제는 이 프록시의 Bearer 세션 인증 + tenant 소유 검증(AlertController)이다.
  */
 @Component
 public class ResponderClient {
@@ -24,8 +24,10 @@ public class ResponderClient {
 
     private final RestClient http;
 
-    public ResponderClient(@Value("${edrdog.responder.url}") String baseUrl) {
-        this.http = RestClient.builder().baseUrl(baseUrl).build();
+    public ResponderClient(@Value("${edrdog.responder.url}") String baseUrl,
+                           @Value("${edrdog.internal.key}") String internalKey) {
+        // 모든 요청에 내부 키를 싣는다
+        this.http = RestClient.builder().baseUrl(baseUrl).defaultHeader("X-Internal-Key", internalKey).build();
     }
 
     /**

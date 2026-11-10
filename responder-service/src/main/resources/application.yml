@@ -32,6 +32,8 @@ server:
   port: 8082
 
 edrdog:
+  internal:
+    key: ${INTERNAL_API_KEY:dev-internal-key}   # 서비스 간 내부 API 키(X-Internal-Key). collector/api-service 와 같은 값
   kafka:
     alerts-topic: alerts        # detector 가 발행한 판정 결과 (소비 입력)
   responder:

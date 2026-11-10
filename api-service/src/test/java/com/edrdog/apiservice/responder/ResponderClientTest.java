@@ -18,10 +18,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class ResponderClientTest {
 
+    private static final String KEY = "test-internal-key";
+
     private HttpServer server;
     private String requestMethod;
     private String requestUri;
     private String requestBody;
+    private String sentKey;
     private String responseBody;
     private int responseStatus;
 
@@ -33,6 +36,7 @@ class ResponderClientTest {
         server.createContext("/", exchange -> {
             requestMethod = exchange.getRequestMethod();
             requestUri = exchange.getRequestURI().toString();
+            sentKey = exchange.getRequestHeaders().getFirst("X-Internal-Key");
             requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -51,7 +55,7 @@ class ResponderClientTest {
     }
 
     private ResponderClient client() {
-        return new ResponderClient("http://127.0.0.1:" + server.getAddress().getPort());
+        return new ResponderClient("http://127.0.0.1:" + server.getAddress().getPort(), KEY);
     }
 
     @Test
@@ -67,6 +71,17 @@ class ResponderClientTest {
         assertThat(requestBody).contains("\"tenantId\":\"t1\"").contains("\"host\":\"h\"");
         assertThat(result.status()).isEqualTo("PENDING");
         assertThat(result.executionId()).isEqualTo("exec-1");
+    }
+
+    @Test
+    void kill_과_결과_조회는_X_Internal_Key_를_싣는다() {
+        // responder 가 이 헤더가 없으면 401 로 거절한다(KISA H5)
+        client().kill("t1", "h", "t");
+        assertThat(sentKey).isEqualTo(KEY);
+
+        sentKey = null;
+        client().killResult("exec-1");
+        assertThat(sentKey).isEqualTo(KEY);
     }
 
     @Test
