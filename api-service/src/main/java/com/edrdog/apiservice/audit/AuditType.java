@@ -24,6 +24,11 @@ public final class AuditType {
     public static final String ACCESS_DENIED = "access_denied";
     public static final String ACCOUNT_CREATE = "account_create";
 
+    // KISA 평가 후속 수정: Slack webhook 변경, 에이전트가 올리는 자체시험·무결성 검증 사건(에이전트가 정한 이름)
+    public static final String WEBHOOK_CHANGE = "webhook_change";
+    public static final String SECURITY_CHECK = "security_check";
+    public static final String INTEGRITY_CHECK = "integrity_check";
+
     // 다른 묶음이 쓸 유형(상수만 둔다. 남기는 코드는 그 묶음이 넣는다)
     public static final String PASSWORD_CHANGE = "password_change";
     public static final String AUTH_LOCKOUT = "auth_lockout";

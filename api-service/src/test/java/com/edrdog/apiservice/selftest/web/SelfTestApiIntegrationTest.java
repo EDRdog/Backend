@@ -2,6 +2,7 @@ package com.edrdog.apiservice.selftest.web;
 
 import com.edrdog.apiservice.auth.AppUser;
 import com.edrdog.apiservice.auth.UserRepository;
+import com.edrdog.apiservice.selftest.SelfTestItem;
 import com.edrdog.apiservice.selftest.SelfTestRun;
 import com.edrdog.apiservice.selftest.SelfTestRunRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,7 +19,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
+import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -130,5 +134,35 @@ class SelfTestApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].trigger").value("MANUAL"));
+    }
+
+    // 가입자 전원이 admin 이라 다른 조직 admin 의 이메일이 이 화면에 보이던 문제(KISA 평가 발견 사항)
+    @Test
+    void requesterEmailIsShownToTheSameOrganizationAndMaskedForOthers() throws Exception {
+        String orgA = signupAdmin("selftest-org-a@edrdog.com");
+        String orgB = signupAdmin("selftest-org-b@edrdog.com");
+        mvc.perform(post("/api/operations/selftest").header("Authorization", "Bearer " + orgA))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.requestedBy").value("selftest-org-a@edrdog.com"));
+
+        mvc.perform(get("/api/operations/selftest?limit=1").header("Authorization", "Bearer " + orgA))
+                .andExpect(jsonPath("$[0].requestedBy").value("selftest-org-a@edrdog.com"));
+        MvcResult other = mvc.perform(get("/api/operations/selftest?limit=1").header("Authorization", "Bearer " + orgB))
+                .andExpect(jsonPath("$[0].requestedBy").value("다른 조직 관리자")).andReturn();
+        assertFalse(other.getResponse().getContentAsString().contains("selftest-org-a@edrdog.com"));
+    }
+
+    @Test
+    void rowsStoredBeforeTheTenantWasRecordedAreMaskedAndSystemRunsStayEmpty() throws Exception {
+        String token = signupAdmin("selftest-legacy@edrdog.com");
+        List<SelfTestItem> items = List.of(SelfTestItem.pass(SelfTestItem.SELFTEST, "database", "ok"));
+
+        runs.save(SelfTestRun.of(SelfTestRun.Trigger.MANUAL, Instant.now(), "old-admin@edrdog.com", null, items));
+        mvc.perform(get("/api/operations/selftest?limit=1").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$[0].requestedBy").value("다른 조직 관리자"));
+
+        runs.save(SelfTestRun.of(SelfTestRun.Trigger.SCHEDULED, Instant.now(), null, null, items));
+        mvc.perform(get("/api/operations/selftest?limit=1").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$[0].requestedBy").value(nullValue()));
     }
 }
