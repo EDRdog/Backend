@@ -19,6 +19,7 @@
 | AGT-6 | 시계가 틀어진 단말의 이벤트를 버리지 않고 당긴다 | `RawEventMapperTest` 의 ts 관련 케이스 | `docs/design-docs/decisions/006-event-time-ordering.md` | 자동 |
 | AGT-7 | 검증 실패한 한 건이 배치 전체를 실패시키지 않는다 | `RawEventMapperTest` 전체 | `README.md` "1. Endpoint" | 자동 |
 | AGT-8 | 이벤트에 tenant 가 태깅된다 | `EventTaggerTest` 전체 | `docs/design-docs/decisions/004-server-resolves-tenant-from-node-key.md` | 자동 |
+| AGT-17 | 이벤트의 host 를 인증된 노드의 host_identifier 로 덮어쓴다 | `EventTaggerTest.overwritesHostWithNodeIdentity`, `AgentIngestIntegrationTest` 의 전체흐름 케이스 | `docs/security/kisa-2021-review.md` H2 | 자동 |
 
 ## 등록과 인증
 

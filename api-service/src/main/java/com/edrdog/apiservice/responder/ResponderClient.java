@@ -29,22 +29,22 @@ public class ResponderClient {
     }
 
     /**
-     * host 의 target 프로세스 kill 을 responder 에 요청한다. 명령이 나가면 PENDING 과 명령 id 가 온다.
+     * tenant 의 host 에 target 프로세스 kill 을 responder 에 요청한다. 명령이 나가면 PENDING 과 명령 id 가 온다.
      * 연결 실패·4xx/5xx·빈 응답을 FAILED 로 매핑한다. 그냥 던지면 불투명한 500 이 나가고,
      * 반대로 KILLED 로 두면 종료되지 않은 프로세스를 처리 완료로 넘긴다(fail-closed).
      */
-    public KillResult kill(String host, String target) {
+    public KillResult kill(String tenantId, String host, String target) {
         try {
             KillResult result = http.post()
                     .uri("/api/responder/kill")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new KillCommand(host, target))
+                    .body(new KillCommand(tenantId, host, target))
                     .retrieve()
                     .body(KillResult.class);
-            return result != null ? result : new KillResult(host, target, "FAILED", null);
+            return result != null ? result : new KillResult(tenantId, host, target, "FAILED", null);
         } catch (RestClientException e) {
-            log.error("responder kill 위임 실패 host={} target={} err={}", host, target, e.toString());
-            return new KillResult(host, target, "FAILED", null);
+            log.error("responder kill 위임 실패 tenant={} host={} target={} err={}", tenantId, host, target, e.toString());
+            return new KillResult(tenantId, host, target, "FAILED", null);
         }
     }
 
@@ -67,6 +67,6 @@ public class ResponderClient {
     }
 
     /** responder kill 요청 본문(responder KillController.KillRequest 와 동일 필드). */
-    private record KillCommand(String host, String target) {
+    private record KillCommand(String tenantId, String host, String target) {
     }
 }

@@ -89,7 +89,7 @@ class AgentIngestIntegrationTest {
     @Test
     void enroll_heartbeat_events_전체흐름_tenant_태깅_발행() throws Exception {
         when(producer.publish(any(Event.class))).thenReturn(CompletableFuture.completedFuture(null));
-        when(responder.pendingCommands("mac-001"))
+        when(responder.pendingCommands("7", "mac-001"))
                 .thenReturn(List.of(new AgentCommand("cmd-1", "kill_process", "/tmp/evil.sh")));
         String nodeKey = enroll("mac-001", "darwin");
 
@@ -103,7 +103,7 @@ class AgentIngestIntegrationTest {
 
         String body = """
                 {"events":[
-                  {"host":"mac-001","type":"process","ts":1785341400000,"process":"sh","parent":"bash","cmdline":"sh -c whoami"}
+                  {"host":"spoofed-mac","type":"process","ts":1785341400000,"process":"sh","parent":"bash","cmdline":"sh -c whoami"}
                 ]}
                 """;
         mvc.perform(post("/api/agent/events")
@@ -115,6 +115,7 @@ class AgentIngestIntegrationTest {
 
         ArgumentCaptor<Event> published = ArgumentCaptor.forClass(Event.class);
         verify(producer, times(1)).publish(published.capture());
+        // 이벤트가 다른 기기 이름을 대도 인증된 노드의 이름으로 나간다
         assertEquals("mac-001", published.getValue().getHost());
         assertEquals("7", published.getValue().getTenantId());
         assertEquals("sh", published.getValue().getProcess());
@@ -124,7 +125,7 @@ class AgentIngestIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"command_id\":\"cmd-1\",\"status\":\"KILLED\",\"message\":\"pid 4242 종료\"}"))
                 .andExpect(status().isOk());
-        verify(responder, times(1)).reportCommandResult("cmd-1", "KILLED", "pid 4242 종료");
+        verify(responder, times(1)).reportCommandResult("7", "mac-001", "cmd-1", "KILLED", "pid 4242 종료");
     }
 
     /**
@@ -247,7 +248,6 @@ class AgentIngestIntegrationTest {
                 {"events":[
                   {"host":"mac-002","type":"process","ts":1785341400000,"process":"sh"},
                   {"host":"mac-002","type":"process","ts":1785341400},
-                  {"host":"","type":"process","ts":1785341400000},
                   {"host":"mac-002","type":"모르는타입","ts":1785341400000},
                   {"host":"mac-002","type":"network","ts":1785341400000}
                 ]}
@@ -355,7 +355,7 @@ class AgentIngestIntegrationTest {
                         .content("{\"command_id\":\"cmd-1\",\"status\":\"KILLED\",\"message\":\"\"}"))
                 .andExpect(status().isUnauthorized());
 
-        verify(responder, never()).reportCommandResult(anyString(), anyString(), anyString());
+        verify(responder, never()).reportCommandResult(anyString(), anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

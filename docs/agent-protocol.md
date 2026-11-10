@@ -95,6 +95,9 @@ X-Node-Key: ...
 `commands` 는 아직 처리되지 않은 명령만 담는다. 같은 명령을 두 번 받아도 안전해야 하므로
 에이전트는 이미 실행한 `id` 를 기억하고 건너뛴다.
 
+서버는 node_key 로 푼 노드의 **(tenant, host_identifier)** 로 넣은 명령만 내려준다. host 이름은 조직마다
+겹칠 수 있어서, host 로만 찾으면 다른 조직의 같은 이름 기기가 명령을 받는다.
+
 ## 3. 이벤트 전송
 
 ```
@@ -134,7 +137,7 @@ X-Node-Key: ...
 
 | 필드 | 의미 |
 |:---|:---|
-| `host` | 엔드포인트 식별자. 상관분석 키 |
+| `host` | 엔드포인트 식별자. 상관분석 키. 서버가 등록된 `host_identifier` 로 덮어쓴다 |
 | `type` | `process` / `network` / `file` / `script` / `dns` / `l7` |
 | `ts` | 발생 시각, epoch millis |
 | `process` | 프로세스명 또는 파일명. **전체 경로가 아니라 basename** |
@@ -198,6 +201,10 @@ basename 추출은 에이전트가 한다. 서버가 하던 일을 옮긴 것이
 `tenantId` 는 **에이전트가 보내지 않는다.** 서버가 node_key 로 풀어 심는다. 엔드포인트가 보낸 값을
 믿으면 다른 조직의 태그를 붙일 수 있다.
 
+`host` 는 에이전트가 싣지만 **서버는 믿지 않는다.** node_key 로 푼 노드의 `host_identifier` 로 덮어쓴다.
+보낸 값을 믿으면 인증된 노드 하나가 다른 기기 이름으로 이벤트를 넣어 그 기기의 탐지를 흐리거나 가짜 알림을
+만든다. 에이전트는 두 값을 같은 설정(`host_identifier`, 비면 호스트 이름)에서 채우므로 정상 동작은 그대로다.
+
 **200**
 
 ```json
@@ -227,6 +234,10 @@ X-Node-Key: ...
 
 **200** — 본문 없음
 
+서버는 보고한 노드의 (tenant, host_identifier) 가 그 명령을 넣은 대상과 같을 때만 결과를 반영한다.
+다르면 없는 명령 id 와 똑같이 200 을 주고 버린다. 명령 id 만 맞으면 받아 주면 다른 기기가 남의 조치를
+`KILLED` 로 꾸며 알림을 닫는다.
+
 에이전트가 쓰는 상태는 셋뿐이다.
 
 | 상태 | 뜻 |
@@ -248,9 +259,11 @@ GET  /api/alerts/{alertId}/respond/{executionId}  → { status }   PENDING 이�
 ```
 
 api-service 는 이 둘을 responder 의 `POST /api/responder/kill`, `GET /api/responder/kill/{id}` 로
-위임한다. 결과가 `KILLED` 가 되는 조회에서 알림을 `CONFIRMED` 로 넘긴다.
+위임한다. 위임할 때 tenant·host·target 을 전부 알림에서 꺼내 싣는다. 조회 결과는 명령의 tenant·host 가
+알림과 같을 때만 보여 주고, 결과가 `KILLED` 가 되는 조회에서 알림을 `CONFIRMED` 로 넘긴다.
 
-명령은 responder 의 MySQL(`edrdog_responder.agent_command`)에 저장한다.
+명령은 responder 의 MySQL(`edrdog_responder.agent_command`)에 (tenant, host) 로 저장한다. 같은 키로
+쿨다운도 센다. tenant 칸이 생기기 전에 들어간 옛 행은 tenant 가 비어 어느 하트비트에도 내려가지 않는다.
 
 | 상태 | 언제 |
 |:---|:---|
@@ -269,6 +282,11 @@ api-service 는 이 둘을 responder 의 `POST /api/responder/kill`, `GET /api/r
 
 `target` 은 종료할 대상이다. detector 가 알림에 실어 보낸 값을 그대로 쓴다.
 전체 경로가 있으면 경로, 없으면 프로세스명이다.
+
+archiver 가 이 값을 판정 기록(`edrdog.alerts` 의 `target`)에 저장하고, api-service 의 respond 가 거기서
+꺼낸다. 대시보드가 요청 본문에 `target` 을 실어 보내도 받기만 하고 쓰지 않는다. 본문을 믿으면 로그인한
+사용자가 그 기기의 아무 프로세스나 죽일 수 있다. 저장 칸이 생기기 전에 쌓인 알림은 대상이 비어 있어
+`400` 으로 거절한다.
 
 에이전트는 실행 중인 프로세스에서 대상을 찾아 종료한다. 경로가 오면 실행 파일 경로가 일치하는
 프로세스를, 이름이 오면 파일명이 일치하는 프로세스를 찾는다.

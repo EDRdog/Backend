@@ -35,6 +35,12 @@
 | 빈 껍데기 디렉터리가 남아 있다 | `archiver/`, `detector/`, `responder/`, `api-server/` | 빌드 산출물만 있고 실제 모듈이 아니다. 모듈로 착각하기 쉽다 | 2026-10-04 |
 | 자바 쪽에 린터가 없다 | 루트 `build.gradle` | spotless·checkstyle 설정이 없어 `scripts/check.sh` 의 lint 자리가 Go `vet` 뿐이다 | 2026-10-04 |
 
+## 격리
+
+| 항목 | 위치 | 영향 | 발견일 |
+|---|---|---|---|
+| detector 상태가 tenant 를 가리지 않는다 | `detector-service/.../kafkastreams/topology/` 상태 키와 `events` 파티션 키(둘 다 host) | 서로 다른 tenant 에 같은 host 이름의 기기가 있으면 상관 버퍼를 같이 쓴다. 한쪽 이벤트가 다른 쪽 판정의 근거가 되거나 판정을 가린다. 알림의 tenant·target 은 트리거 이벤트를 따르므로 kill 은 트리거 쪽 기기로만 간다. 키를 `tenant\|host` 로 바꾸면 파티션 배치가 달라져 미뤘다(`README.md` 의 파티션 키 절) | 2026-11-10 |
+
 ## 측정값 전제
 
 ClickHouse 파티션(#180)과 롤업(#298) 수치는 **로컬 docker 단일 인스턴스 + 합성 데이터**다. 운영 실측이 아니다. 문서나 이력서에 쓰려면 이 전제를 같이 말해야 한다. 운영 수치가 필요하면 같은 질의를 운영에서 다시 돌려야 한다.

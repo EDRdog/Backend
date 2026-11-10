@@ -31,7 +31,7 @@ class EventTaggerTest {
                 ]
                 """);
 
-        List<String> tagged = EventTagger.tag("7", events, mapper);
+        List<String> tagged = EventTagger.tag("7", "lab-mac", events, mapper);
 
         assertEquals(2, tagged.size());
         for (String rec : tagged) {
@@ -44,8 +44,8 @@ class EventTaggerTest {
 
     @Test
     void events_가_배열이_아니면_빈_리스트() throws Exception {
-        assertTrue(EventTagger.tag("7", events("{\"host\":\"lab-mac\"}"), mapper).isEmpty());
-        assertTrue(EventTagger.tag("7", null, mapper).isEmpty());
+        assertTrue(EventTagger.tag("7", "lab-mac", events("{\"host\":\"lab-mac\"}"), mapper).isEmpty());
+        assertTrue(EventTagger.tag("7", "lab-mac", null, mapper).isEmpty());
     }
 
     @Test
@@ -54,7 +54,7 @@ class EventTaggerTest {
                 [ {"host":"lab-mac","type":"process"}, "쓰레기", 123 ]
                 """);
 
-        assertEquals(1, EventTagger.tag("7", events, mapper).size());
+        assertEquals(1, EventTagger.tag("7", "lab-mac", events, mapper).size());
     }
 
     /**
@@ -67,8 +67,21 @@ class EventTaggerTest {
                 [ {"host":"lab-mac","type":"process","tenantId":"999"} ]
                 """);
 
-        List<String> tagged = EventTagger.tag("7", events, mapper);
+        List<String> tagged = EventTagger.tag("7", "lab-mac", events, mapper);
 
         assertEquals("7", mapper.readTree(tagged.get(0)).get("tenantId").asText());
+    }
+
+    /** host 를 믿으면 인증된 노드가 다른 기기 이름으로 이벤트를 넣어 그 기기의 탐지를 흐리거나 가짜 알림을 만든다. */
+    @Test
+    void overwritesHostWithNodeIdentity() throws Exception {
+        JsonNode events = events("""
+                [ {"host":"victim-mac","type":"process"}, {"type":"process"} ]
+                """);
+
+        List<String> tagged = EventTagger.tag("7", "lab-mac", events, mapper);
+
+        assertEquals("lab-mac", mapper.readTree(tagged.get(0)).get("host").asText());
+        assertEquals("lab-mac", mapper.readTree(tagged.get(1)).get("host").asText());
     }
 }

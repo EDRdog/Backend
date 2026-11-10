@@ -23,9 +23,9 @@ public class AlertQueryBuilder {
     /** 컨트롤러가 참조하는 offset 상한(공통 가드와 같은 값). FINAL 이 얹히는 만큼 여기가 더 비싸다. */
     public static final int MAX_OFFSET = QueryGuards.MAX_OFFSET;
 
-    // 조회 컬럼. domain/dest_ip 가 빠지면 어느 목적지 때문에 걸렸는지를 셀 수 없다.
+    // 조회 컬럼. domain/dest_ip 가 빠지면 어느 목적지 때문에 걸렸는지를 셀 수 없고, target 이 빠지면 respond 가 대상을 모른다.
     private static final String COLUMNS =
-            "id, tenant_id, host, rule_id, mitre, severity, action, ts, matched, domain, dest_ip";
+            "id, tenant_id, host, rule_id, mitre, severity, action, target, ts, matched, domain, dest_ip";
 
     private final String table;
 
