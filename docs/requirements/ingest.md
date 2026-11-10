@@ -1,6 +1,6 @@
 # 수집과 등록 (PRD: `docs/product-specs/service.md` F1, F2)
 
-에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `021`, `023`, `024`.
+에이전트가 보낸 것이 검증을 거쳐 `events` 토픽에 들어가기까지. 왜 이렇게 정했는지는 `docs/design-docs/decisions/004`, `008`, `010`, `011`, `021`, `023`, `024`, `025`.
 
 ## 발행 계약
 
@@ -44,12 +44,13 @@
 | AGT-15 | 켤 센서가 하나도 없으면 에이전트가 기동을 거부한다 | `agent/README.md` 의 기동 절차. 조용히 0건으로 도는 것을 막는다 | `docs/design-docs/decisions/008-own-go-agent.md` | 자동 |
 | AGT-22 | eslogger 줄이 4MB 를 넘으면 그 줄만 건너뛰고(개수를 로그로 남기고) 뒤의 이벤트를 계속 읽는다 | `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerPumpSkipsOverlongLineAndContinues`, `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerSensorSurvivesOverlongLine` | `docs/design-docs/decisions/023-skip-overlong-eslogger-line.md` | 자동 |
 | AGT-23 | 읽기가 끝나면 자식(eslogger)을 먼저 죽이므로 센서가 영원히 막히지 않는다 | `agent/internal/sensor/eslogger_darwin_test.go::TestESLoggerSensorDoesNotHangWhenPumpEndsWhileChildAlive` | `docs/design-docs/decisions/023-skip-overlong-eslogger-line.md` | 자동 |
+| AGT-24 | 센서가 전부 오류로 멈추면 에이전트가 오류로 끝난다. 일부만 멈추면 나머지로 계속 수집한다 | `agent/internal/runtime/runtime_test.go::TestRunFailsWhenEverySensorStops`, `agent/internal/runtime/runtime_test.go::TestRunKeepsGoingWhenOneSensorStops` | `docs/design-docs/decisions/025-vendor-patched-golang-etw.md` | 자동 |
 
 ## 수동 확인
 
 | ID | 확인할 것 | 방법 | 상태 |
 |---|---|---|---|
 | AGT-M1 | macOS 실기기에서 4종 이벤트가 올라온다 | 에이전트 설치 후 전체 디스크 접근 권한을 켜고 `-selftest` 로 확인 | 수동 |
-| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차 | 미구현 |
+| AGT-M2 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차. Windows 11 ARM64 VM(UTM, 26300.9711)에서 다섯 종(process, network, dns, file, l7)이 로컬 서버까지 오는 것을 봤다(2026-11-11). `packaging/install-windows.ps1` 설치와 서비스 재시작도 봤다. x64 실기기와 서버가 내려주는 설치 스크립트는 아직 안 봤다 | 수동 |
 | AGT-M3 | 인증서 고정이 실제로 다른 서버를 거부한다 | 다른 인증서로 서명된 서버를 가리켜 붙지 않는 것을 확인 | 수동 |
 | AGT-M4 | 설치 스크립트가 지문이 다른 서버에서 `server.pem` 을 쓰기 전에 멈춘다 | macOS 두 스크립트의 대조 줄은 로컬 `openssl s_server` 로 일치, 불일치, 서버 없음을 돌려 확인했다(2026-11-10). Windows 두 스크립트는 실기기에서 틀린 지문으로 돌려 지문이 다르다로 멈추는지 봐야 한다(아직 안 봤다) | 수동 |

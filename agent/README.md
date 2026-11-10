@@ -35,19 +35,26 @@ macOS 라이브 캡처에서 실제로 잡힌 것이다. 암호화된 TLS 1.3 �
 프로세스의 소켓을 못 읽는 것으로 의심하지만 **확인된 것은 아니다.** 탐지 대상은 사용자가 실행한
 프로그램이라 실용적인 손해는 작지만, "항상 붙는다" 고 말할 수는 없다.
 
-**확인 안 된 것 (전부 Windows 다)**
+**Windows 는 ARM64 VM 에서만 확인했다**
 
-- **Windows ETW 센서를 실제 Windows 기기에서 한 번도 돌려보지 않았다.** 크로스 빌드와 순수 로직
-  단위 테스트까지가 전부다
-- **상수가 틀려도 빌드는 통과하고 조용히 0건이 된다. 이게 가장 위험하다.** 프로바이더 GUID,
-  keyword 비트, 이벤트 ID 는 컴파일러가 검사해 주지 않는다. 값 하나가 어긋나면 오류 없이
-  이벤트만 안 온다
-- **pktmon 으로 TLS SNI 를 받는 경로 전체가 미검증이다.** 이벤트 160 의 필드 배치는 Microsoft 의
-  NetMon 파서와 드라이버 헤더 두 곳을 대조해 잡았지만 실기기에서 확인한 것은 아니다. 어긋나면
-  `sizeMismatch` 로 잡히게 해 두었다. **Windows Defender 가 pktmon 조작을 막을 가능성이 이 경로에서
-  가장 큰 위험이다.** 공격 기법으로 공개된 방식이라 휴리스틱 탐지가 실재한다
-- Windows 서비스 등록과 `-service` 경로도 실기기 미검증이다
-- 설치 스크립트 두 개 다 실기기 미검증이다
+2026-11-11 Windows 11 ARM64 Pro VM(UTM, 빌드 26300.9711, Defender 실시간 보호 켬)에서 로컬 서버에
+붙여 돌렸다. 프로세스(notepad, 부모 powershell), 네트워크, DNS(example.org), 파일(시작프로그램 폴더
+CREATE), L7(TLS 1.3, SNI example.org) 다섯 종이 ClickHouse 까지 들어왔다. 몇 분씩 짧게 돌린 결과다.
+
+처음 돌렸을 때는 **ETW 센서가 관리자 권한에서도 시작하자마자 멈췄다.** golang-etw 가 이벤트 ID 필터
+버퍼를 붙잡아 두지 않아서 Windows 가 쓰레기 값을 읽고 `The parameter is incorrect` 를 냈다. 그래서
+라이브러리를 `third_party/golang-etw` 에 복사해 고쳐 쓴다(`docs/design-docs/decisions/025`).
+크로스 빌드와 단위 테스트로는 잡히지 않았다.
+
+아직 안 본 것:
+
+- **x64 실기기.** 실사용 PC 는 대부분 x64 다. 위 결과는 ARM64 VM 조건이다
+- Defender 가 pktmon 조작을 막는지는 짧게 몇 번 돌려 막히지 않은 것까지만 봤다. 공격 기법으로
+  공개된 방식이라 휴리스틱 탐지가 실재하고, 오래 돌리거나 다른 Defender 버전에서는 다를 수 있다
+- 서버가 내려주는 설치 스크립트(`api-service/.../install/windows.ps1`). `packaging/install-windows.ps1`
+  은 같은 VM 에서 지문이 맞는 경우로 설치까지 돌렸고, 서비스가 LocalSystem 으로 떠서 ETW 세션을
+  열었다. ETW 세션을 밖에서 끊어 에이전트를 종료 코드 1 로 끝내자 SCM 이 60초 뒤 다시 띄웠다
+- 지문이 다른 서버에서 설치 스크립트가 멈추는지
 
 확인 절차는 아래 [Windows 실기기 검증 절차](#windows-실기기-검증-절차) 에 우선순위 순으로 정리해 두었다.
 
@@ -722,7 +729,8 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json -selftest
 ```
 
-기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트 4종.
+기대: `등록 완료` 와 `수집 시작 sensors=[selftest]` 로그, 그리고 대시보드에 selftest 이벤트.
+ARM64 VM 에서는 process, network, dns, file, script, l7 여섯 종이 들어왔다.
 
 ### 1. 관리자 권한이 없으면 오류로 죽는가
 
@@ -734,7 +742,9 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 .\edrdog-agent.exe -config C:\ProgramData\EDRdog\config.json
 ```
 
-- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다**
+- 기대: 아래 오류를 내고 **종료 코드 1 로 죽는다.** 센서가 전부 멈추면 에이전트가 끝나게 한 것은
+  ARM64 VM 에서 이 항목이 어긋난 뒤다(그 전에는 오류만 남기고 계속 돌았다). 권한을 낮춰 띄울 때는
+  `runas /trustlevel:0x20000` 이 비밀번호 없이 된다
 
   ```
   ETW 세션(EDRdog-Agent)을 열지 못했다. 권한이 없다. 관리자 권한으로 실행하거나
@@ -748,7 +758,7 @@ Windows 기기가 없어 확인하지 못한 것들이다. **위험한 순서로
 | 오류 코드 | 나와야 할 안내 | 일으키는 법 |
 |:---|:---|:---|
 | `ERROR_ACCESS_DENIED`(5) | 관리자 권한 / `Performance Log Users` 그룹 / LocalSystem 서비스 | 일반 사용자로 실행 |
-| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 에이전트를 두 개 띄우거나, 아래처럼 세션을 미리 만들어 둔다 |
+| `ERROR_ALREADY_EXISTS`(183) | `logman stop EDRdog-Agent -ets` 로 지워라 | 실제로는 나오지 않는다. golang-etw 가 같은 이름의 세션을 멈추고 다시 연다. ARM64 VM 에서 아래처럼 세션을 미리 만들어 둬도 에이전트가 그 세션을 가져갔다 |
 | 그 밖 | 관리자 권한 안내로 물러난다 | |
 
 ```powershell
