@@ -17,4 +17,7 @@ import java.lang.annotation.Target;
 public @interface RequiresRole {
 
     Role value();
+
+    /** true 면 패스워드 변경이 필요한 계정(KISA BF-08)도 통과시킨다. 내 정보와 패스워드 변경만 켠다. */
+    boolean allowPasswordChange() default false;
 }

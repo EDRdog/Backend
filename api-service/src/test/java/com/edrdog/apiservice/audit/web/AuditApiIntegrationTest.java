@@ -96,17 +96,24 @@ class AuditApiIntegrationTest {
 
     @Test
     void signupLoginAndLogoutAreRecordedWithActorAndIp() throws Exception {
-        String[] a = signup("flow-audit@edrdog.com", "password1");
+        String[] a = signup("flow-audit@edrdog.com", "Tr1cky#Pwd");
         MvcResult login = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"flow-audit@edrdog.com\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"flow-audit@edrdog.com\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isOk()).andReturn();
         String token = om.readTree(login.getResponse().getContentAsString()).get("token").asText();
         mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
                 .andExpect(status().isNoContent());
 
-        JsonNode rows = audits(a[0], "?order=asc");
-        assertEquals(List.of("signup", "login_success", "logout"), field(rows, "type"));
-        JsonNode login1 = rows.get(1);
+        // 가입 때 받은 세션은 로그인이 끊었고(중복 접속 차단, ADR 032) 로그아웃했으니, 읽으려면 한 번 더 로그인한다
+        MvcResult again = mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"flow-audit@edrdog.com\",\"password\":\"Tr1cky#Pwd\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String reader = om.readTree(again.getResponse().getContentAsString()).get("token").asText();
+        JsonNode rows = audits(reader, "?order=asc");
+        // session_terminate 는 두 번째 로그인이 아니라 첫 로그인이 가입 세션을 끊은 기록이다
+        assertEquals(List.of("signup", "session_terminate", "login_success", "logout", "login_success"),
+                field(rows, "type"));
+        JsonNode login1 = rows.get(2);
         assertEquals("user", login1.get("actorType").asText());
         assertEquals("flow-audit@edrdog.com", login1.get("actor").asText());
         assertEquals("success", login1.get("result").asText());
@@ -118,7 +125,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void failedLoginOfARegisteredEmailIsRecordedInThatTenant() throws Exception {
-        String[] a = signup("fail-audit@edrdog.com", "password1");
+        String[] a = signup("fail-audit@edrdog.com", "Tr1cky#Pwd");
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"fail-audit@edrdog.com\",\"password\":\"wrong-pass-1\"}"))
                 .andExpect(status().isUnauthorized());
@@ -156,7 +163,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void killRequestRecordsTheRequesterAndTheHost() throws Exception {
-        String[] a = signup("kill-audit@edrdog.com", "password1");
+        String[] a = signup("kill-audit@edrdog.com", "Tr1cky#Pwd");
         AlertResponse alert = mock(AlertResponse.class);
         when(alert.host()).thenReturn("hostK");
         when(alert.target()).thenReturn("evil.exe");
@@ -179,7 +186,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void killRequestThatTheResponderFailedIsRecordedAsFailure() throws Exception {
-        String[] a = signup("killfail-audit@edrdog.com", "password1");
+        String[] a = signup("killfail-audit@edrdog.com", "Tr1cky#Pwd");
         AlertResponse alert = mock(AlertResponse.class);
         when(alert.host()).thenReturn("hostF");
         when(alert.target()).thenReturn("evil.exe");
@@ -195,7 +202,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void agentEnrollResultIsRecordedWithoutTheSecret() throws Exception {
-        String[] a = signup("enroll-audit@edrdog.com", "password1");
+        String[] a = signup("enroll-audit@edrdog.com", "Tr1cky#Pwd");
         MvcResult sec = mvc.perform(get("/api/tenant/enroll-secret")
                 .header("Authorization", "Bearer " + a[0]).header("X-API-Key", "dev-api-key")).andReturn();
         String secret = om.readTree(sec.getResponse().getContentAsString()).get("enrollSecret").asText();
@@ -226,8 +233,8 @@ class AuditApiIntegrationTest {
 
     @Test
     void otherTenantOnlySeesItsOwnRecords() throws Exception {
-        String[] a = signup("tenant-a-audit@edrdog.com", "password1");
-        String[] b = signup("tenant-b-audit@edrdog.com", "password1");
+        String[] a = signup("tenant-a-audit@edrdog.com", "Tr1cky#Pwd");
+        String[] b = signup("tenant-b-audit@edrdog.com", "Tr1cky#Pwd");
 
         JsonNode rowsA = audits(a[0], "");
         JsonNode rowsB = audits(b[0], "");
@@ -240,7 +247,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void nonAdminRoleIsForbidden() throws Exception {
-        String[] a = signup("admin-for-viewer@edrdog.com", "password1");
+        String[] a = signup("admin-for-viewer@edrdog.com", "Tr1cky#Pwd");
         AppUser viewer = users.save(AppUser.of("viewer-audit@edrdog.com", "hash", Long.parseLong(a[1]),
                 "viewer", Instant.now()));
         sessions.save(UserSession.of("viewer-token-audit", viewer.getId(), viewer.getTenantId(),
@@ -254,7 +261,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void searchSortAndPageByQueryParameters() throws Exception {
-        String[] a = signup("search-audit@edrdog.com", "password1");
+        String[] a = signup("search-audit@edrdog.com", "Tr1cky#Pwd");
         long tenant = Long.parseLong(a[1]);
         for (int i = 1; i <= 4; i++) {
             audit.record(new AuditEntry(Instant.ofEpochMilli(i * 1000L), tenant, AuditActor.SYSTEM, null,
@@ -281,7 +288,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void badSearchParametersAreRejected() throws Exception {
-        String[] a = signup("badparam-audit@edrdog.com", "password1");
+        String[] a = signup("badparam-audit@edrdog.com", "Tr1cky#Pwd");
         for (String q : List.of("?order=sideways", "?result=maybe", "?offset=-1", "?offset=999999", "?from=abc")) {
             mvc.perform(get("/api/audit" + q).header("Authorization", "Bearer " + a[0]))
                     .andExpect(status().isBadRequest());
@@ -290,7 +297,7 @@ class AuditApiIntegrationTest {
 
     @Test
     void thereIsNoApiToChangeOrDeleteRecords() throws Exception {
-        String[] a = signup("immutable-audit@edrdog.com", "password1");
+        String[] a = signup("immutable-audit@edrdog.com", "Tr1cky#Pwd");
         var requests = List.of(delete("/api/audit"), put("/api/audit"), patch("/api/audit"),
                 delete("/api/audit/1"), post("/api/audit"));
         for (var req : requests) {

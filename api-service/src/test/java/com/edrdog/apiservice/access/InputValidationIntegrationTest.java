@@ -62,13 +62,13 @@ class InputValidationIntegrationTest extends AccessTestBase {
     @Test
     void signupRejectsBadEmailOverlongFieldsAndControlCharacters() throws Exception {
         for (String bad : List.of(
-                json("a b@edrdog.com", "password1", null),
-                json("<script>@edrdog.com", "password1", null),
-                json("a'--@edrdog.com", "password1", null),
-                json("x".repeat(250) + "@edrdog.com", "password1", null),
+                json("a b@edrdog.com", "Tr1cky#Pwd", null),
+                json("<script>@edrdog.com", "Tr1cky#Pwd", null),
+                json("a'--@edrdog.com", "Tr1cky#Pwd", null),
+                json("x".repeat(250) + "@edrdog.com", "Tr1cky#Pwd", null),
                 json("ok1@edrdog.com", "p".repeat(80), null),
-                json("ok2@edrdog.com", "password1", LONG),
-                json("ok3@edrdog.com", "password1", "org\\u0000name"))) {
+                json("ok2@edrdog.com", "Tr1cky#Pwd", LONG),
+                json("ok3@edrdog.com", "Tr1cky#Pwd", "org\\u0000name"))) {
             mvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON).content(bad))
                     .andExpect(status().isBadRequest());
         }
@@ -79,12 +79,12 @@ class InputValidationIntegrationTest extends AccessTestBase {
         signup("input-login@edrdog.com");
 
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .content(json(LONG + "@edrdog.com", "password1", null))).andExpect(status().isBadRequest());
+                .content(json(LONG + "@edrdog.com", "Tr1cky#Pwd", null))).andExpect(status().isBadRequest());
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
                 .content(json("input-login@edrdog.com", "p".repeat(200), null))).andExpect(status().isBadRequest());
         // 형식이 이상한 이메일은 가입 검증이 아니라 로그인 실패(401)다. 옛 데모 계정 이메일("test")이 로그인돼야 해서 형식은 안 본다.
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .content(json("no-such-user", "password1", null))).andExpect(status().isUnauthorized());
+                .content(json("no-such-user", "Tr1cky#Pwd", null))).andExpect(status().isUnauthorized());
     }
 
     @Test

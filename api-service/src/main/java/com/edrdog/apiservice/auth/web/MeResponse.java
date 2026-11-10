@@ -1,4 +1,4 @@
 package com.edrdog.apiservice.auth.web;
 
-public record MeResponse(Long userId, Long tenantId, String email, String role) {
+public record MeResponse(Long userId, Long tenantId, String email, String role, boolean mustChangePassword) {
 }

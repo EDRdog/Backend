@@ -87,7 +87,7 @@ class InternalAuditApiIntegrationTest {
     void agentRecordsAreVisibleToTheTenantAdmin() throws Exception {
         // 가입으로 tenant 를 만들고, 그 tenant 의 admin 이 에이전트 기록을 조회한다.
         MvcResult su = mvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"email\":\"agent-view@edrdog.com\",\"password\":\"password1\"}")).andReturn();
+                .content("{\"email\":\"agent-view@edrdog.com\",\"password\":\"Tr1cky#Pwd\"}")).andReturn();
         JsonNode n = om.readTree(su.getResponse().getContentAsString());
         String token = n.get("token").asText();
         long tenant = n.get("tenantId").asLong();

@@ -37,7 +37,7 @@ class TenantWebhookIntegrationTest {
     private ObjectMapper om;
 
     private static String signupJson(String email) {
-        return "{\"email\":\"" + email + "\",\"password\":\"password1\"}";
+        return "{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}";
     }
 
     private String signupAndToken(String email) throws Exception {

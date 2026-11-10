@@ -118,10 +118,14 @@ class AdminIpApiIntegrationTest extends AccessTestBase {
         mvc.perform(post("/api/auth/login").with(from(OUTSIDER)).contentType(MediaType.APPLICATION_JSON).content(bad))
                 .andExpect(status().isForbidden());
         assertEquals(sessionsBefore, sessions.count());
-        mvc.perform(post("/api/auth/login").with(from(ME)).contentType(MediaType.APPLICATION_JSON).content(good))
-                .andExpect(status().isOk());
+        // 이 로그인이 가입 때 받은 세션을 끊으므로(중복 접속 차단, ADR 032) 조회는 이 토큰으로 한다
+        MvcResult ok = mvc.perform(post("/api/auth/login").with(from(ME)).contentType(MediaType.APPLICATION_JSON)
+                        .content(good))
+                .andExpect(status().isOk()).andReturn();
+        Account reader = new Account(a.email(), om.readTree(ok.getResponse().getContentAsString()).get("token").asText(),
+                a.tenantId());
 
-        JsonNode rows = audits(a, "?type=admin_ip_block");
+        JsonNode rows = audits(reader, "?type=admin_ip_block");
         assertEquals(2, rows.size());
         assertTrue(rows.get(0).get("detail").asText().contains("login"));
     }

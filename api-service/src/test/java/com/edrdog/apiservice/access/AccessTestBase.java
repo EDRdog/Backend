@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {"spring.kafka.listener.auto-startup=false", "edrdog.selftest.run-on-startup=false"})
 abstract class AccessTestBase {
 
-    static final String PASSWORD = "password1";
+    static final String PASSWORD = "Tr1cky#Pwd";
 
     @Autowired
     protected MockMvc mvc;

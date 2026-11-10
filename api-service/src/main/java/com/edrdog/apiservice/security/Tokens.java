@@ -1,7 +1,11 @@
 package com.edrdog.apiservice.security;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HexFormat;
 
 /**
  * 인증 토큰 생성(순수 랜덤). enroll secret(테넌트가 엔드포인트에 배포), install token, 로그인 세션 토큰이
@@ -16,6 +20,16 @@ public final class Tokens {
     private static final int BYTES = 32;   // 충돌 확률 무시 가능
 
     private Tokens() {
+    }
+
+    /** 세션 토큰을 DB 에 넣을 때 쓰는 해시(SHA-256 16진수 64자). 토큰이 256비트 랜덤이라 솔트 없는 빠른 해시로 충분하다. */
+    public static String hash(String token) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);   // SHA-256 은 JVM 필수 알고리즘이라 여기 오면 JVM 이 깨진 것이다
+        }
     }
 
     public static String newToken() {

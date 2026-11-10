@@ -56,7 +56,7 @@ class SelfTestApiIntegrationTest {
     private String signupAdmin(String email) throws Exception {
         MvcResult res = mvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isCreated())
                 .andReturn();
         return om.readTree(res.getResponse().getContentAsString()).get("token").asText();
@@ -64,10 +64,10 @@ class SelfTestApiIntegrationTest {
 
     /** 가입은 항상 admin 이라 admin 이 아닌 유저는 DB 에 직접 넣고 로그인한다. */
     private String loginNonAdmin(String email) throws Exception {
-        users.save(AppUser.of(email, encoder.encode("password1"), 1L, "viewer", Instant.now()));
+        users.save(AppUser.of(email, encoder.encode("Tr1cky#Pwd"), 1L, "viewer", Instant.now()));
         MvcResult res = mvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"password1\"}"))
+                        .content("{\"email\":\"" + email + "\",\"password\":\"Tr1cky#Pwd\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
         return om.readTree(res.getResponse().getContentAsString()).get("token").asText();
