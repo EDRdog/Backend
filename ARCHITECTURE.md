@@ -53,7 +53,7 @@ Go Agent ──HTTPS──▶ collector ──[events]──▶ detector ──[
 | 도메인 | 위치 | 한 줄 |
 |---|---|---|
 | Event | `event-schema/src/main/proto/edrdog/v1/event.proto` | 토픽 계약. 필드 1~12, 16번 미만으로 묶어 태그를 1바이트로 유지 |
-| 룰과 판정 | `detector-service/.../rule/`, `kafkastreams/topology/CorrelationProcessor.java` | R1~R4 시퀀스 룰, host 별 5분 윈도우, MITRE 기법 매핑 |
+| 룰과 판정 | `detector-service/.../rule/`, `kafkastreams/topology/CorrelationProcessor.java` | R1, R2 시퀀스 룰, R3~R5 와 Sigma 파일 룰(`DataRules`) 같은 단일 이벤트 룰, host 별 5분 윈도우, MITRE 기법 매핑 |
 | 상관 버퍼 | `detector-service/.../event_buffer.proto` | detector 내부 상태 스키마. 토픽 계약이 아니다 |
 | 대응 명령 | `responder-service/.../command/AgentCommand` | 정해진 종류만(`kill_process`). 상태는 조건부 UPDATE 로만 전이 |
 | 테넌트 격리 | `api-service/.../security/TenantScope.java` | 모든 ClickHouse 질의에 tenant 조건을 강제하는 단일 통로 |
