@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.incident.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -27,6 +29,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/incidents")
 @Tag(name = "incidents", description = "사건 조회 및 트리아지 (알림을 프로세스 계보로 묶어 조회 시 계산, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class IncidentController {
 
     private static final String BEARER_PREFIX = "Bearer ";
@@ -102,6 +105,7 @@ public class IncidentController {
     @Operation(summary = "사건 트리아지",
             description = "status 를 confirmed/false_positive 로 갱신. 잘못된 값 400, 남의 tenant 것 404. "
                     + "사건 id 는 결정적이라 알림이 하나 더 붙어도 여기서 단 status 가 유지된다.")
+    @RequiresRole(Role.ADMIN)
     @PatchMapping("/{id}/status")
     public IncidentResponse triage(
             @RequestHeader(name = "Authorization", required = false) String authorization,

@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.install.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -59,6 +61,7 @@ public class InstallController {
 
     @Operation(summary = "설치 링크 발급",
             description = "로그인 유저(Bearer)의 tenant 로 짧게 사는 설치 토큰을 만들고, 붙여넣을 한 줄 명령까지 돌려준다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/api/tenant/install-link")
     public InstallLinkResponse issue(@RequestHeader(name = "Authorization", required = false) String authorization) {
         Principal principal = auth.resolve(bearerToken(authorization));

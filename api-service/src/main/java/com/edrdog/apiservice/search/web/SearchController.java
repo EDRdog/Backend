@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.search.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 @Tag(name = "search", description = "통합 검색 (알림·호스트·이벤트를 한 번에, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class SearchController {
 
     private static final String BEARER_PREFIX = "Bearer ";

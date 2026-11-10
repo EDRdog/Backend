@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.intelligence.topology.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.intelligence.topology.TopologyService;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/intelligence")
 @Tag(name = "intelligence", description = "관계 분석 (events+alerts 집계, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class TopologyController {
 
     private static final String BEARER_PREFIX = "Bearer ";

@@ -1,6 +1,8 @@
 package com.edrdog.apiservice.selftest.web;
 
-import com.edrdog.apiservice.auth.AuthService;
+import com.edrdog.apiservice.access.AccessInterceptor;
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.auth.Principal;
 import com.edrdog.apiservice.selftest.SelfTestRun;
 import com.edrdog.apiservice.selftest.SelfTestService;
@@ -10,11 +12,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -25,51 +26,28 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/operations/selftest")
 @Tag(name = "operations", description = "서버 자체시험·무결성 검증 결과 조회와 즉시 실행")
+@RequiresRole(Role.ADMIN)
 public class SelfTestController {
 
-    private static final String BEARER_PREFIX = "Bearer ";
     private static final int MAX_LIMIT = 100;
 
     private final SelfTestService service;
-    private final AuthService auth;
 
-    public SelfTestController(SelfTestService service, AuthService auth) {
+    public SelfTestController(SelfTestService service) {
         this.service = service;
-        this.auth = auth;
     }
 
     @Operation(summary = "자체시험·무결성 검증 결과 목록",
             description = "최근 실행을 최신순으로 항목별 결과와 함께 준다. limit 기본 20, 최대 100.")
     @GetMapping
-    public List<SelfTestRunResponse> list(
-            @RequestHeader(name = "Authorization", required = false) String authorization,
-            @RequestParam(defaultValue = "20") int limit) {
-        admin(authorization);
+    public List<SelfTestRunResponse> list(@RequestParam(defaultValue = "20") int limit) {
         return service.recent(Math.max(1, Math.min(limit, MAX_LIMIT))).stream().map(SelfTestRunResponse::from).toList();
     }
 
     @Operation(summary = "자체시험·무결성 검증 즉시 실행", description = "지금 한 번 돌리고 그 결과를 201 로 준다.")
     @PostMapping
-    public ResponseEntity<SelfTestRunResponse> run(
-            @RequestHeader(name = "Authorization", required = false) String authorization) {
-        Principal p = admin(authorization);
+    public ResponseEntity<SelfTestRunResponse> run(@RequestAttribute(AccessInterceptor.PRINCIPAL) Principal p) {
         SelfTestRun run = service.run(SelfTestRun.Trigger.MANUAL, p.email());
         return ResponseEntity.status(HttpStatus.CREATED).body(SelfTestRunResponse.from(run));
-    }
-
-    // 로그인(401) 다음에 admin 인지(403) 본다. 가입 계정은 지금 전부 admin 이다(ADR 029).
-    private Principal admin(String authorization) {
-        Principal p = auth.resolve(bearerToken(authorization));
-        if (!"admin".equals(p.role())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "관리자만 사용할 수 있습니다");
-        }
-        return p;
-    }
-
-    private static String bearerToken(String authorization) {
-        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
-            return null;
-        }
-        return authorization.substring(BEARER_PREFIX.length()).trim();
     }
 }

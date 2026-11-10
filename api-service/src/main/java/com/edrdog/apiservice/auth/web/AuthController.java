@@ -1,5 +1,9 @@
 package com.edrdog.apiservice.auth.web;
 
+import com.edrdog.apiservice.access.AdminIpService;
+import com.edrdog.apiservice.access.InputRules;
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.audit.AuditActor;
 import com.edrdog.apiservice.audit.AuditEntry;
 import com.edrdog.apiservice.audit.AuditResult;
@@ -35,15 +39,20 @@ public class AuthController {
 
     private final AuthService auth;
     private final AuditService audit;
+    private final AdminIpService adminIps;
 
-    public AuthController(AuthService auth, AuditService audit) {
+    public AuthController(AuthService auth, AuditService audit, AdminIpService adminIps) {
         this.auth = auth;
         this.audit = audit;
+        this.adminIps = adminIps;
     }
 
     @Operation(summary = "회원가입", description = "이메일/비밀번호(+선택 조직명)로 가입하고 세션 토큰을 발급한다.")
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> signup(@RequestBody SignupRequest req, HttpServletRequest http) {
+        InputRules.requireText("email", req.email(), 254);
+        InputRules.requirePassword(req.password());
+        InputRules.requireText("orgName", req.orgName(), 100);
         AuthResult r = auth.signup(req.email(), req.password(), req.orgName());
         audit.record(new AuditEntry(null, r.tenantId(), AuditActor.USER, r.userId(), r.email(),
                 AuditType.SIGNUP, r.email(), AuditResult.SUCCESS, null, http.getRemoteAddr()));
@@ -53,6 +62,12 @@ public class AuthController {
     @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인하고 세션 토큰을 발급한다.")
     @PostMapping("/login")
     public AuthResponse login(@RequestBody LoginRequest req, HttpServletRequest http) {
+        // 이메일 형식은 안 본다(옛 데모 계정 이메일이 "test" 다). 길이와 문자만 거른다.
+        InputRules.requireText("email", req.email(), 254);
+        InputRules.requirePassword(req.password());
+        // 조직에 허용 IP 목록이 있으면 비밀번호를 보기 전에 거절한다. 목록 밖 IP 에서는 비밀번호를 맞춰 볼 수 없다.
+        auth.principalOfEmail(req.email())
+                .ifPresent(who -> adminIps.requireAllowed(who, http.getRemoteAddr(), "login"));
         AuthResult r;
         try {
             r = auth.login(req.email(), req.password());
@@ -85,6 +100,7 @@ public class AuthController {
     }
 
     @Operation(summary = "내 정보", description = "Bearer 토큰으로 현재 유저 정보를 조회한다.")
+    @RequiresRole(Role.VIEWER)
     @GetMapping("/me")
     public MeResponse me(@RequestHeader(name = "Authorization", required = false) String authorization) {
         Principal p = auth.resolve(bearerToken(authorization));

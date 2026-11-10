@@ -1,5 +1,7 @@
 package com.edrdog.apiservice.alert.web;
 
+import com.edrdog.apiservice.access.RequiresRole;
+import com.edrdog.apiservice.access.Role;
 import com.edrdog.apiservice.alert.AlertQueryBuilder;
 import com.edrdog.apiservice.alert.AlertService;
 import com.edrdog.apiservice.alert.AlertStatus;
@@ -40,6 +42,7 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/alerts")
 @Tag(name = "alerts", description = "알림 조회 및 트리아지 (ClickHouse 판정기록 + MySQL status 오버레이, tenant 격리)")
+@RequiresRole(Role.VIEWER)
 public class AlertController {
 
     private static final String BEARER_PREFIX = "Bearer ";
@@ -161,6 +164,7 @@ public class AlertController {
     }
 
     @Operation(summary = "알림 트리아지", description = "status 를 confirmed/false_positive 로 갱신. 잘못된 값 400, 남의 tenant 것 404.")
+    @RequiresRole(Role.ADMIN)
     @PatchMapping("/{id}")
     public AlertResponse triage(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -178,6 +182,7 @@ public class AlertController {
                     + "명령이 나가면 202 와 status=PENDING, executionId 를 바로 돌려주고, "
                     + "결과는 GET /{id}/respond/{executionId} 로 조회한다. 쿨다운·스위치 꺼짐·실패는 200 으로 끝난다. "
                     + "실제 kill 실행 여부는 responder 실행 스위치(RESPONDER_EXECUTE_ENABLED)에 달려 있다.")
+    @RequiresRole(Role.ADMIN)
     @PostMapping("/{id}/respond")
     public ResponseEntity<KillResult> respond(
             @RequestHeader(name = "Authorization", required = false) String authorization,
@@ -205,6 +210,7 @@ public class AlertController {
     @Operation(summary = "알림 실제 조치 결과",
             description = "respond 가 돌려준 executionId 의 현재 결과. PENDING 이면 아직 에이전트 보고 전이다. "
                     + "KILLED 가 되면 알림을 confirmed 로 넘긴다. 알림과 명령의 tenant·host 가 다르면 404.")
+    @RequiresRole(Role.ADMIN)
     @GetMapping("/{id}/respond/{executionId}")
     public KillResult respondResult(
             @RequestHeader(name = "Authorization", required = false) String authorization,

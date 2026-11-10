@@ -57,6 +57,7 @@ Go Agent ──HTTPS──▶ collector ──[events]──▶ detector ──[
 | 상관 버퍼 | `detector-service/.../event_buffer.proto` | detector 내부 상태 스키마. 토픽 계약이 아니다 |
 | 대응 명령 | `responder-service/.../command/AgentCommand` | 정해진 종류만(`kill_process`). 상태는 조건부 UPDATE 로만 전이 |
 | 테넌트 격리 | `api-service/.../security/TenantScope.java` | 모든 ClickHouse 질의에 tenant 조건을 강제하는 단일 통로 |
+| 관리 API 접근통제 | `api-service/.../access/AccessInterceptor.java` | 세션 Bearer 로 오는 모든 관리 API 의 로그인, 조직 허용 IP, 역할을 컨트롤러 앞에서 보는 단일 관문. 컨트롤러는 `@RequiresRole` 만 붙인다(ADR 033) |
 | 노드 등록 | `collector-service/.../agent/AgentNode` | node_key 는 SHA-256 해시로만 저장 |
 | 적재 스키마 | `archiver-service/.../clickhouse/ClickHouseWriter.java` | `events`, `alerts`, 롤업 `events_hourly` DDL 의 단일 출처 |
 | 관측 연결 | `event-schema/.../KafkaTraceLink.java`, `TraceAttribute.java` | 벤더 API 를 쓰는 유일한 두 자리. 백엔드를 옮기면 여기만 걷어낸다 |
