@@ -45,6 +45,28 @@ class DataRulesTest {
     }
 
     @Test
+    @DisplayName("ConfigMap 마운트처럼 ..data 를 거치는 심볼릭 링크 파일도 읽고, 링크가 바뀌면 리로드로 반영한다")
+    void configMapStyleSymlinks_areRead() throws IOException {
+        Path mount = Files.createDirectory(dir.resolve("mount"));
+        Path v1 = Files.createDirectory(mount.resolve("..v1"));
+        Files.writeString(v1.resolve("a.yml"), ruleYaml("rule_a", "aaa"));
+        Files.createSymbolicLink(mount.resolve("..data"), mount.relativize(v1));
+        Files.createSymbolicLink(mount.resolve("a.yml"), Path.of("..data/a.yml"));
+
+        DataRules rules = new DataRules(mount.toString());
+        assertThat(ids(rules)).containsExactly("RULE_A");
+
+        // kubelet 은 새 버전 디렉터리를 만들고 ..data 링크를 바꿔 끼운다
+        Path v2 = Files.createDirectory(mount.resolve("..v2"));
+        Files.writeString(v2.resolve("a.yml"), ruleYaml("rule_a2", "aaa"));
+        Files.delete(mount.resolve("..data"));
+        Files.createSymbolicLink(mount.resolve("..data"), mount.relativize(v2));
+        rules.reload();
+
+        assertThat(ids(rules)).containsExactly("RULE_A2");
+    }
+
+    @Test
     @DisplayName("지원하지 않는 구문의 룰은 빼고 나머지는 읽는다")
     void unsupportedRule_isSkipped_othersLoaded() throws IOException {
         write("c.yml", ruleYaml("rule_c", "ccc").replace("CommandLine|contains", "CommandLine|re"));
