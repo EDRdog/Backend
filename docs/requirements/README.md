@@ -33,3 +33,4 @@ ERD = Engineering Requirements Document (DB 관계도 아님). PRD(`docs/product
 | `alerting.md` | 알림 | 수신 대상 결정, 발송, 중복 억제, webhook 캐시 |
 | `response.md` | 대응 | 요청·응답, 상태 전이, 명령 큐, dry-run 권고 |
 | `query.md` | 조회·설정 | 조직 격리, 페이지네이션, 롤업 조회, 인증 |
+| `security.md` | 보안 기능 | 감사기록, 자체시험·무결성, 인증·세션, 관리 IP 제한, 접근통제(KISA EDR 보안 기능 항목) |
