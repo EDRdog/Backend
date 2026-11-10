@@ -9,3 +9,5 @@ require (
 )
 
 require github.com/0xrawsec/golang-utils v1.3.1 // indirect
+
+replace github.com/0xrawsec/golang-etw => ./third_party/golang-etw
