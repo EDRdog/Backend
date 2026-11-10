@@ -65,6 +65,10 @@ edrdog:
     # 에이전트가 붙을 주소(host:port). 위와 다를 수 있다. 에이전트는 api-service 가 아니라
     # 수집 입구인 collector-service 의 TLS 포트로 붙기 때문이다.
     agent-server: ${INSTALL_AGENT_SERVER:}
+    # 위 주소가 내놓을 서버 인증서의 SHA-256 지문(keytool 출력 그대로, 콜론 허용). 운영은 Infisical 주입.
+    # 설치 스크립트는 받은 인증서를 이 값과 대조해 같을 때만 고정한다. 비어 있으면 설치 스크립트를 내주지 않는다.
+    # 얻는 법: docs/design-docs/decisions/024-install-pins-configured-cert-fingerprint.md
+    server-cert-sha256: ${INSTALL_SERVER_CERT_SHA256:}
     # 에이전트 바이너리를 받는 곳. CI 가 릴리스에 올린다(.github/workflows/agent-release.yml).
     download-base: ${INSTALL_DOWNLOAD_BASE:https://github.com/EDRdog/Backend/releases/latest/download}
     # 설치 링크의 수명. 짧게 두는 이유는 링크가 새면 그 시간 동안 남의 기기가 우리 테넌트로

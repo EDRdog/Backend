@@ -14,6 +14,8 @@ $ErrorActionPreference = 'Stop'
 $Server        = '{{SERVER}}'
 $EnrollSecret  = '{{ENROLL_SECRET}}'
 $DownloadBase  = '{{DOWNLOAD_BASE}}'
+# 서버 인증서의 SHA-256 지문(콜론 없는 대문자). 받은 인증서가 이 값과 같을 때만 고정한다.
+$ServerCertSha256 = '{{SERVER_CERT_FINGERPRINT}}'
 
 $InstallDir  = 'C:\Program Files\EDRdog'
 $ConfDir     = 'C:\ProgramData\EDRdog'
@@ -58,26 +60,23 @@ try {
 # "왜 안 뜨지" 로 시간을 버리게 된다.
 #
 # try 로 감싸는 것은 해시 파일을 받는 것까지다. 비교까지 같이 감싸면 불일치가 catch 로
-# 흘러들어 경고로 강등되고 설치가 그대로 이어진다. 그러면 검사가 있으나 마나다.
-$want = $null
+# 흘러들어 다른 오류로 보인다.
+# 해시 파일이 없으면 설치하지 않는다. 경고만 하고 넘어가면 해시 파일을 빼는 것만으로 검사를 건너뛴다.
 try {
     $want = (Invoke-WebRequest -Uri "$DownloadBase/$asset.sha256" -UseBasicParsing).Content
 } catch {
-    # 릴리스에 해시 파일이 없을 수 있다. 그 사실을 조용히 넘기지는 않는다.
-    Write-Warning "$asset.sha256 이 없어 무결성을 확인하지 못했다"
+    Fail "$asset.sha256 을 받지 못해 무결성을 확인할 수 없다: $DownloadBase/$asset.sha256 ($($_.Exception.Message))"
 }
-if ($want) {
-    # 파일 모양은 "<해시>  <파일명>" 이다. 해시는 첫 칸에 있다. 16진수만 남기고 뒤에서
-    # 자르면 파일명 끝을 해시로 읽는다(실제로 그렇게 짰다가 모든 설치가 막혔다).
-    # edrdog-agent-windows-amd64.exe 는 a, d, e, 6, 4 처럼 16진수로 보이는 글자가 많다.
-    $want = (($want -split '\s+') | Where-Object { $_ })[0]
-    # 64자 16진수가 아니면 비교 자체가 무의미하다. 그걸 "일치하지 않음" 으로 뭉뚱그리면
-    # 릴리스 파일이 깨진 것과 바이너리가 바뀐 것을 구별할 수 없다.
-    if ($want -notmatch '^[A-Fa-f0-9]{64}$') { Fail "$asset.sha256 의 모양이 예상과 다르다: $want" }
-    $got = (Get-FileHash -Path $downloaded -Algorithm SHA256).Hash
-    if ($want -ne $got) { Fail "받은 바이너리의 해시가 다르다 (기대 $want, 실제 $got)" }
-    Write-Host '  해시 확인됨.'
-}
+# 파일 모양은 "<해시>  <파일명>" 이다. 해시는 첫 칸에 있다. 16진수만 남기고 뒤에서
+# 자르면 파일명 끝을 해시로 읽는다(실제로 그렇게 짰다가 모든 설치가 막혔다).
+# edrdog-agent-windows-amd64.exe 는 a, d, e, 6, 4 처럼 16진수로 보이는 글자가 많다.
+$want = (($want -split '\s+') | Where-Object { $_ })[0]
+# 64자 16진수가 아니면 비교 자체가 무의미하다. 그걸 "일치하지 않음" 으로 뭉뚱그리면
+# 릴리스 파일이 깨진 것과 바이너리가 바뀐 것을 구별할 수 없다.
+if ($want -notmatch '^[A-Fa-f0-9]{64}$') { Fail "$asset.sha256 의 모양이 예상과 다르다: $want" }
+$got = (Get-FileHash -Path $downloaded -Algorithm SHA256).Hash
+if ($want -ne $got) { Fail "받은 바이너리의 해시가 다르다 (기대 $want, 실제 $got)" }
+Write-Host '  해시 확인됨.'
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # 기존 서비스가 exe 를 물고 있으면 복사가 실패한다. 먼저 멈춘다.
@@ -87,7 +86,7 @@ Copy-Item -Force $downloaded $BinPath
 Remove-Item -Recurse -Force $tmp
 
 # --- 2. 인증서 ---
-Write-Host "[2/4] 서버 인증서 수신 ($Server)"
+Write-Host "[2/4] 서버 인증서 수신과 지문 대조 ($Server)"
 New-Item -ItemType Directory -Force -Path $ConfDir | Out-Null
 $parts = $Server.Split(':')
 $hostName = $parts[0]
@@ -95,10 +94,18 @@ $port = if ($parts.Length -gt 1) { [int]$parts[1] } else { 443 }
 
 $tcp = $null
 $ssl = $null
+# 검증 콜백이 본 지문. 대조에 실패했을 때 무엇을 받았는지 보여 주려고 남긴다.
+$seen = @{}
 try {
     $tcp = [System.Net.Sockets.TcpClient]::new($hostName, $port)
-    # 여기서는 받아오기만 한다. 실제 검증은 에이전트가 이 파일로 고정해서 한다.
-    $callback = [System.Net.Security.RemoteCertificateValidationCallback] { param($s, $c, $ch, $e) $true }
+    # 에이전트가 이 인증서로 서버를 고정한다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이
+    # 고정된 서버가 되어 kill 명령까지 보낼 수 있다. 서버가 내려준 지문과 같을 때만 받아들인다.
+    $callback = [System.Net.Security.RemoteCertificateValidationCallback] {
+        param($s, $c, $ch, $e)
+        $hash = [System.Security.Cryptography.SHA256]::Create().ComputeHash($c.GetRawCertData())
+        $seen.Fp = [BitConverter]::ToString($hash) -replace '-', ''
+        $seen.Fp -eq $ServerCertSha256
+    }
     $ssl = [System.Net.Security.SslStream]::new($tcp.GetStream(), $false, $callback)
     $ssl.AuthenticateAsClient($hostName)
     $der = $ssl.RemoteCertificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
@@ -106,6 +113,9 @@ try {
     "-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----" |
         Set-Content -Path $CertPath -Encoding ascii
 } catch {
+    if ($seen.Fp -and $seen.Fp -ne $ServerCertSha256) {
+        Fail "서버 인증서 지문이 다르다 (기대 $ServerCertSha256, 실제 $($seen.Fp)). 중간에서 가로챈 연결일 수 있어 설치를 멈춘다"
+    }
     Fail "서버 인증서를 받지 못했다: $($_.Exception.Message)"
 } finally {
     if ($ssl) { $ssl.Dispose() }

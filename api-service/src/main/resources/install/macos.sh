@@ -13,6 +13,8 @@ set -euo pipefail
 SERVER="{{SERVER}}"
 ENROLL_SECRET="{{ENROLL_SECRET}}"
 DOWNLOAD_BASE="{{DOWNLOAD_BASE}}"
+# 서버 인증서의 SHA-256 지문(콜론 없는 대문자). 받은 인증서가 이 값과 같을 때만 고정한다.
+SERVER_CERT_SHA256="{{SERVER_CERT_FINGERPRINT}}"
 
 BIN_PATH="/usr/local/bin/edrdog-agent"
 CONF_DIR="/etc/edrdog"
@@ -61,33 +63,36 @@ curl -fsSL "$DOWNLOAD_BASE/$ASSET" -o "$TMP/agent" || fail "바이너리를 받�
 
 # 받은 것이 온전한지 본다. 끊긴 다운로드는 크기만 작고 그대로 실행돼서, 깔린 뒤에
 # "왜 안 뜨지" 로 시간을 버리게 된다.
-if curl -fsSL "$DOWNLOAD_BASE/$ASSET.sha256" -o "$TMP/want" 2>/dev/null; then
-  # 파일 모양은 "<해시>  <파일명>" 이다. 해시는 첫 칸에 있다. 공백을 지우고 뒤에서 자르면
-  # 파일명 끝을 해시로 읽는다(실제로 그렇게 짰다가 모든 설치가 막혔다).
-  # \r 을 지우는 것은 파일이 CRLF 로 올라온 경우다.
-  want="$(awk 'NR==1 {print $1}' "$TMP/want" | tr -d '\r')"
-  got="$(shasum -a 256 "$TMP/agent" | awk '{print $1}')"
-  # 64자 16진수가 아니면 비교 자체가 무의미하다. 그걸 "일치하지 않음" 으로 뭉뚱그리면
-  # 릴리스 파일이 깨진 것과 바이너리가 바뀐 것을 구별할 수 없다.
-  [[ "$want" =~ ^[A-Fa-f0-9]{64}$ ]] || fail "$ASSET.sha256 의 모양이 예상과 다르다: $want"
-  [[ "$want" == "$got" ]] || fail "받은 바이너리의 해시가 다르다 (기대 $want, 실제 $got)"
-  echo "해시 확인됨."
-else
-  # 릴리스에 해시 파일이 없을 수 있다. 그 사실을 조용히 넘기지는 않는다.
-  echo "경고: $ASSET.sha256 이 없어 무결성을 확인하지 못했다" >&2
-fi
+# 해시 파일이 없으면 설치하지 않는다. 경고만 하고 넘어가면 해시 파일을 빼는 것만으로 검사를 건너뛴다.
+curl -fsSL "$DOWNLOAD_BASE/$ASSET.sha256" -o "$TMP/want" || fail "$ASSET.sha256 을 받지 못해 무결성을 확인할 수 없다: $DOWNLOAD_BASE/$ASSET.sha256"
+# 파일 모양은 "<해시>  <파일명>" 이다. 해시는 첫 칸에 있다. 공백을 지우고 뒤에서 자르면
+# 파일명 끝을 해시로 읽는다(실제로 그렇게 짰다가 모든 설치가 막혔다).
+# \r 을 지우는 것은 파일이 CRLF 로 올라온 경우다.
+want="$(awk 'NR==1 {print $1}' "$TMP/want" | tr -d '\r')"
+got="$(shasum -a 256 "$TMP/agent" | awk '{print $1}')"
+# 64자 16진수가 아니면 비교 자체가 무의미하다. 그걸 "일치하지 않음" 으로 뭉뚱그리면
+# 릴리스 파일이 깨진 것과 바이너리가 바뀐 것을 구별할 수 없다.
+[[ "$want" =~ ^[A-Fa-f0-9]{64}$ ]] || fail "$ASSET.sha256 의 모양이 예상과 다르다: $want"
+[[ "$want" == "$got" ]] || fail "받은 바이너리의 해시가 다르다 (기대 $want, 실제 $got)"
+echo "해시 확인됨."
 install -m 755 "$TMP/agent" "$BIN_PATH"
 
 # --- 2. 설정 ------------------------------------------------------------------
 step "2/4 설정을 쓴다 ($SERVER)"
 mkdir -p "$CONF_DIR"
 chmod 755 "$CONF_DIR"
-# 에이전트가 이 인증서로 서버를 고정한다. 여기서는 받아오기만 한다.
+# 에이전트가 이 인증서로 서버를 고정한다. 받은 것을 그대로 고정하면 설치 순간 끼어든 쪽이
+# 고정된 서버가 되어 kill 명령까지 보낼 수 있다. 서버가 내려준 지문과 같을 때만 고정한다.
 # 서버 인증서가 self-signed 라 openssl 은 받아 놓고도 검증 실패로 종료코드 1 을 낸다.
 # pipefail 이 켜져 있어 그 코드를 그대로 믿으면 정상 수신도 실패로 끝난다. 파일로 판단한다.
 openssl s_client -connect "$SERVER" -servername "${SERVER%%:*}" </dev/null 2>/dev/null \
-  | sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > "$CERT_PATH" || true
-[[ -s "$CERT_PATH" ]] || fail "서버 인증서를 받지 못했다. $SERVER 가 열려 있는지 확인해라"
+  | sed -n '/BEGIN CERTIFICATE/,/END CERTIFICATE/p' > "$TMP/server.pem" || true
+[[ -s "$TMP/server.pem" ]] || fail "서버 인증서를 받지 못했다. $SERVER 가 열려 있는지 확인해라"
+# 받은 인증서의 SHA-256 지문을 콜론 없는 대문자로 뽑는다. 못 뽑으면 빈 값이라 아래 대조에서 걸린다.
+got_fp="$(openssl x509 -in "$TMP/server.pem" -noout -fingerprint -sha256 | sed 's/.*=//' | tr -d ':' | tr 'a-f' 'A-F')" || true
+[[ "$got_fp" == "$SERVER_CERT_SHA256" ]] || fail "서버 인증서 지문이 다르다 (기대 $SERVER_CERT_SHA256, 실제 $got_fp). 중간에서 가로챈 연결일 수 있어 설치를 멈춘다"
+# 대조한 그 인증서 한 장만 고정한다.
+openssl x509 -in "$TMP/server.pem" -out "$CERT_PATH"
 chmod 644 "$CERT_PATH"
 
 # enroll secret 이 들어가므로 다른 사용자가 읽으면 안 된다.

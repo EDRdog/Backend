@@ -6,8 +6,10 @@
 # 로그를 봐서 붙었는지 확인하는 순서다. 이 스크립트가 그걸 전부 잇는다.
 #
 # 사용:
-#   sudo ./bootstrap-macos.sh --server <호스트:포트> --enroll-secret <값>
-#   sudo ./bootstrap-macos.sh --server <호스트:포트> --email <메일> --api-key <키>
+#   sudo ./bootstrap-macos.sh --server <호스트:포트> --server-cert-sha256 <지문> --enroll-secret <값>
+#   sudo ./bootstrap-macos.sh --server <호스트:포트> --server-cert-sha256 <지문> --email <메일> --api-key <키>
+#
+# 지문은 install-macos.sh 로 그대로 넘긴다. 서버 인증서를 그 값과 대조해 같을 때만 고정한다.
 #
 # 두 번째 형태는 로그인해서 시크릿을 대신 받아 온다. 비밀번호는 인자로 받지 않고 물어본다.
 # 인자로 주면 ps 에 그대로 보이고 셸 기록에도 남는다.
@@ -18,6 +20,7 @@ set -euo pipefail
 
 SERVER=""
 ENROLL_SECRET=""
+SERVER_CERT_SHA256=""
 EMAIL=""
 API_KEY=""
 BINARY=""
@@ -59,6 +62,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --server)        SERVER="${2:-}"; shift 2 ;;
     --enroll-secret) ENROLL_SECRET="${2:-}"; shift 2 ;;
+    --server-cert-sha256) SERVER_CERT_SHA256="${2:-}"; shift 2 ;;
     --email)         EMAIL="${2:-}"; shift 2 ;;
     --api-key)       API_KEY="${2:-}"; shift 2 ;;
     --binary)        BINARY="${2:-}"; shift 2 ;;
@@ -68,6 +72,8 @@ done
 
 [[ "$(id -u)" == "0" ]] || fail "sudo 로 실행해야 한다"
 [[ -n "$SERVER" ]] || fail "--server <호스트:포트> 가 필요하다"
+# 빌드와 비밀번호 입력까지 마친 뒤 설치 단계에서 죽지 않게 여기서 먼저 본다. 모양은 install-macos.sh 가 본다.
+[[ -n "$SERVER_CERT_SHA256" ]] || fail "--server-cert-sha256 <지문> 이 필요하다 (운영자에게 받는다)"
 # 비밀번호를 묻고, 권한을 켤 때까지 기다린다. 사람이 앞에 없으면 둘 다 못 한다.
 # 여기서 먼저 걸러야 설치를 반쯤 해 놓고 죽지 않는다.
 [[ -r /dev/tty ]] || fail "터미널에서 직접 실행해야 한다 (권한 승인을 기다려야 한다)"
@@ -125,7 +131,8 @@ fi
 
 # --- 3. 설치 ------------------------------------------------------------------
 step "3/5 설치한다"
-"$HERE/install-macos.sh" --server "$SERVER" --enroll-secret "$ENROLL_SECRET" --binary "$BINARY"
+"$HERE/install-macos.sh" --server "$SERVER" --enroll-secret "$ENROLL_SECRET" \
+  --server-cert-sha256 "$SERVER_CERT_SHA256" --binary "$BINARY"
 
 # --- 4. 전체 디스크 접근 권한 --------------------------------------------------
 step "4/5 전체 디스크 접근 권한"

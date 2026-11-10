@@ -26,6 +26,7 @@
 |---|---|---|---|
 | 격리(isolate)가 구현돼 있지 않다 | `ACTION_ISOLATE` 상수만 존재 | 대응 수단이 프로세스 종료 하나뿐이다. 관리 채널 예외와 자동 해제 타이머가 함께 있어야 안전해서 미뤘다 | 2026-10-04 |
 | Windows ETW 센서가 실기기에서 검증되지 않았다 | `agent/internal/sensor/etw_windows.go`, `packaging/install-windows.ps1` | 크로스 컴파일과 단위 테스트까지만 통과했다. 확인 목록은 `agent/README.md` | 2026-10-04 |
+| 설치 스크립트의 지문 대조(Windows)가 실기기에서 돌지 않았다 | `api-service/.../install/windows.ps1`, `agent/packaging/install-windows.ps1` | 검증 콜백이 스크립트 변수(`$ServerCertSha256`, `$seen`)를 읽는다. 개발 기기에 PowerShell 이 없어 구문 검사도 못 했다. 틀리면 설치가 늘 멈춘다(고정은 안 되므로 TOFU 로 돌아가지는 않는다) | 2026-11-10 |
 | EOS 를 켰을 때의 비용이 측정되지 않았다 | detector | 측정 인프라만 넣어 두고 켜 보지는 않았다. 켜자는 얘기가 나오면 먼저 재야 한다 | 2026-10-04 |
 
 ## 문서·구조
@@ -40,7 +41,7 @@
 
 | 항목 | 위치 | 영향 | 발견일 |
 |---|---|---|---|
-| detector `/api/events` 에 인증이 없다 | `detector-service/.../api/IngestController.java` | 클러스터 안 파드가 임의 이벤트를 detector 에 넣을 수 있다. responder 는 `X-Internal-Key` 로 막았지만(ADR 019) 여기는 그대로다. KISA H5 의 남은 부분 | 2026-11-10 |
+| detector `/api/events` 에 인증이 없다 | `detector-service/.../api/IngestController.java` | 클러스터 안 파드가 임의 이벤트를 detector 에 넣을 수 있다. responder 는 `X-Internal-Key` 로 막았지만(ADR 022) 여기는 그대로다. KISA H5 의 남은 부분 | 2026-11-10 |
 | Kafka 가 무인증 PLAINTEXT 다 | `k8s/kafka.yaml` | 클러스터 안 파드가 `events`·`alerts` 를 읽고 쓸 수 있다. `alerts` 를 직접 넣으면 responder 가 kill 명령을 만든다(실행 스위치가 켜져 있을 때). KISA H5 의 남은 부분 | 2026-11-10 |
 | NetworkPolicy 가 없다 | `k8s/` | 파드끼리 제한 없이 통신한다. 내부 키가 유일한 방어선이고, 키가 새면 그 위로 막을 층이 없다 | 2026-11-10 |
 | 내부 키 기본값이 `dev-internal-key` 다 | 각 서비스 `application.yml` 의 `edrdog.internal.key` | `INTERNAL_API_KEY` 를 주입하지 못한 서비스는 공개된 기본값으로 뜬다. responder 도 같은 방식이다(다른 서비스와 맞췄다). 기본값을 없애는 건 KISA 2-6 에서 따로 다룬다 | 2026-11-10 |
@@ -50,7 +51,14 @@
 
 | 항목 | 위치 | 영향 | 발견일 |
 |---|---|---|---|
-| 이벤트 필드 하나의 길이와 detector 버퍼에 바이트 기준 상한이 없다 | `collector-service/.../agent/web/` 의 필드 검증, `detector-service/.../kafkastreams/topology/EventBuffer.java` | 요청 본문은 8MB 로 막혔지만(019) 8MB 짜리 필드 하나가 그대로 Kafka 와 detector 상관 버퍼에 들어간다. 버퍼 상한은 건수 기준이라 큰 이벤트가 쌓이면 힙을 쓴다 | 2026-11-10 |
+| 이벤트 필드 하나의 길이와 detector 버퍼에 바이트 기준 상한이 없다 | `collector-service/.../agent/web/` 의 필드 검증, `detector-service/.../kafkastreams/topology/EventBuffer.java` | 요청 본문은 8MB 로 막혔지만(021) 8MB 짜리 필드 하나가 그대로 Kafka 와 detector 상관 버퍼에 들어간다. 버퍼 상한은 건수 기준이라 큰 이벤트가 쌓이면 힙을 쓴다 | 2026-11-10 |
+
+## 보안
+
+| 항목 | 위치 | 영향 | 발견일 |
+|---|---|---|---|
+| 에이전트 바이너리에 서명이 없다 | `.github/workflows/agent-release.yml`, `api-service/.../install/` | 설치 스크립트가 보는 `.sha256` 은 바이너리와 같은 GitHub Release 에서 온다. 릴리스를 바꿀 수 있는 쪽은 해시도 바꾸므로, 해시는 끊긴 다운로드만 막는다. cosign·minisign 서명과 공개키 고정이 남은 틈이다(KISA H7, ADR 024) | 2026-11-10 |
+| 이미 깔린 기기의 `server.pem` 은 TOFU 로 받은 것이다 | 엔드포인트 `/etc/edrdog/server.pem`, `C:\ProgramData\EDRdog\server.pem` | 지문 대조는 2026-11-10 이후 설치부터다. 그 전에 깐 기기는 운영자 지문과 직접 대조해 봐야 안다(ADR 024 결과/영향) | 2026-11-10 |
 
 ## 측정값 전제
 

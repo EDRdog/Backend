@@ -72,4 +72,34 @@ class InstallScriptTest {
         // 빈 문자열이 들어가면 "--server" 뒤가 비어 인자 하나가 통째로 밀린다.
         assertThrows(IllegalArgumentException.class, () -> InstallScript.render("{{A}}", Map.of("A", "")));
     }
+
+    private static final String FP_UPPER = "C8A43B6EDCA088F8CC65425F7B1069DD762B38C28D843C8D11D1E9AD4F0AB24E";
+
+    @Test
+    void fingerprintAcceptsKeytoolOutputAsIs() {
+        // 운영자는 keytool 출력(콜론, 대문자)을 그대로 붙여 넣는다. 스크립트는 콜론 없는 대문자와 비교한다.
+        String keytool = "C8:A4:3B:6E:DC:A0:88:F8:CC:65:42:5F:7B:10:69:DD:76:2B:38:C2:8D:84:3C:8D:11:D1:E9:AD:4F:0A:B2:4E";
+
+        assertEquals(FP_UPPER, InstallScript.normalizeFingerprint(keytool));
+        assertEquals(FP_UPPER, InstallScript.normalizeFingerprint(keytool.toLowerCase()));
+        assertEquals(FP_UPPER, InstallScript.normalizeFingerprint(FP_UPPER.toLowerCase()));
+        assertEquals(FP_UPPER, InstallScript.normalizeFingerprint(" " + FP_UPPER + "\n"));
+    }
+
+    @Test
+    void fingerprintRejectsAnythingButSha256() {
+        // 모양이 틀린 값을 받아 주면 스크립트의 비교가 늘 실패하거나, 더 나쁘게는 엉뚱한 값과 비교한다.
+        for (String bad : new String[]{
+                FP_UPPER.substring(1),                    // 63자
+                FP_UPPER + "A",                           // 65자
+                "G" + FP_UPPER.substring(1),              // 16진수 아님
+                "C8A4:" + FP_UPPER.substring(4),          // 콜론이 띄엄띄엄
+                FP_UPPER.substring(0, 32) + " " + FP_UPPER.substring(32),
+                FP_UPPER.substring(0, 63) + ";",
+                "",
+        }) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> InstallScript.normalizeFingerprint(bad), "거부해야 한다: " + bad);
+        }
+    }
 }
