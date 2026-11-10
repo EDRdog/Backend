@@ -34,6 +34,9 @@
 | R1 이 실제 에이전트 이벤트로는 안 걸릴 수 있다 | `Rules.suspiciousProcessChain`, `isSequenceTrigger` | R1 은 자식 shell 이 `process` 타입이라고 가정한다(`isProcess`). 에이전트는 powershell, cmd, wscript, cscript, mshta 를 `script` 타입으로 보낸다(`agent/internal/sensor/etw_cmdline.go` `interpreters`). 단위 테스트는 process 타입으로 만들어서 통과한다. 실데이터로 확인하지 않았다 | 2026-11-10 |
 | 새 데이터 룰이 api-service 카탈로그에 없다 | `api-service/.../alert/ThreatCatalog.java`, `SourceEventMatcher` | 화면에 한글 이름 대신 ruleId 원문, 카테고리 "기타", MITRE 비어 있음. dns 근거는 원본 이벤트로 이어지지 않는다(`SourceEventMatcher` 가 `dns ` 요약을 모른다). process, file, script 는 요약으로 이어진다 | 2026-11-10 |
 | file 데이터 룰이 걸릴 일이 적다 | 에이전트 파일 센서의 감시 경로 | 에이전트는 자동실행 경로 등 감시 대상의 파일 이벤트만 보낸다. 번들 `file_*` 룰은 그 밖의 경로(임시 폴더 등)에서는 걸리지 않는다 | 2026-11-10 |
+| 부정(filter) selection 의 경로 있는 Image 가 파일명으로 줄어 넓게 걸린다 | `SigmaParser.text` | `Image: 'C:\\Program Files\\X\\x.exe'` 를 제외 조건으로 쓰면 다른 경로의 같은 이름 파일도 제외된다(탐지가 줄어드는 쪽 오차). 지금 번들 룰은 Image 를 제외 조건으로 쓰지 않는다 | 2026-11-10 |
+| DestinationPort 에 contains 류 modifier 를 써도 문자열 비교가 된다 | `SigmaParser` network_connection | 포트는 숫자 비교(범위, 이상)가 안 되고 `contains: 44` 가 4444 에도 걸린다. 번들 network 룰이 없어 영향은 없다 | 2026-11-10 |
+| 룰이 갑자기 줄어도 경고가 없다 | `DataRules.scan` | 파일을 지우거나 ConfigMap 이 일부만 남으면 룰 수가 조용히 준다(로그 INFO 한 줄뿐). 감소 폭이 크면 경고한다 | 2026-11-10 |
 | 데이터 룰 시간당 판정 비용을 재지 않았다 | `Rules.evaluate` | 이벤트마다 룰 28개를 순서대로 훑는다(type 색인 없음). 룰이 수백 개가 되기 전에 비용을 재고 색인한다 | 2026-11-10 |
 
 ## 문서·구조

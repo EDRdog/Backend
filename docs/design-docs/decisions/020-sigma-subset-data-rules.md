@@ -11,7 +11,7 @@ R1, R2 는 이벤트 여러 개를 시간 순으로 엮는 시퀀스 룰이다. 
 - **단일 이벤트(point) 룰만** Sigma 부분집합 파일로 뺀다. 이 에이전트가 보내는 필드로 판정되는 SigmaHQ 룰 28개를 번들로 넣는다(`detector-service/src/main/resources/rules/`).
 - **형식은 Sigma 부분집합**이다. `logsource.category` 넷(process_creation, file_event, dns_query, network_connection), 필드 modifier `contains/startswith/endswith/all`, 값 목록(OR), `and/or/not/괄호/1 of/all of`. 지원하지 않는 구문(re, windash, 와일드카드 값, 키워드, 집계 condition, 에이전트가 안 보내는 필드)은 **그 룰만** 거절하고 로그에 이유를 남긴다.
 - **로딩**은 jar 번들 룰로 시작하고, `DETECTION_RULES_DIR` 이 있으면 그 디렉터리(k8s ConfigMap 마운트)로 바꿔 끼운 뒤 30초마다 다시 읽는다. 읽는 쪽은 불변 스냅샷 참조(`volatile List`) 하나만 읽어서 Kafka Streams 스레드가 리로드에 막히지 않는다.
-- **깨진 파일은 파일 단위로** 처리한다. 읽지 못한 파일은 로그를 남기고 그 파일의 이전 룰을 유지한다. 디렉터리를 못 읽거나 비어 있으면 통째로 이전 룰을 유지한다.
+- **깨진 파일은 파일 단위로** 처리한다. 읽지 못한 파일은 로그를 남기고 그 파일의 이전 룰을 유지한다. 디렉터리를 못 읽거나 비어 있거나 읽을 수 있는 룰이 하나도 없으면 통째로 이전 룰을 유지한다. 같은 문제는 상태가 바뀔 때만 에러로 남긴다(ConfigMap 이 없을 때 30초마다 쌓이지 않게). 룰 하나가 판정 중 예외를 던져도 그 룰만 건너뛰어 Streams 스레드를 지킨다.
 - **R1, R2 는 코드에 둔다. 새 시퀀스 룰도 만들지 않는다.** R3, R4, R5 도 코드에 둔다. 같은 동작으로 옮길 수 없는 논리가 있고, 기존 `RulesTest` 45건이 그대로 통과해야 한다.
 - **ruleId** 는 룰 파일의 `name`(소문자, 숫자, `_`)을 대문자로 바꾼 값이다. SigmaHQ `id`(UUID)는 출처 표기로만 남긴다. UUID 는 알림 화면, 집계, 쿨다운 키로 쓰기에 읽을 수 없다. **MITRE** 는 `tags` 의 첫 `attack.tNNNN`, 없으면 거절한다.
 
@@ -28,6 +28,7 @@ R1, R2 는 이벤트 여러 개를 시간 순으로 엮는 시퀀스 룰이다. 
 - **프로세스가 대상이 아닌 룰(file_event, dns_query, network_connection)은 `high` 로 적어도 MEDIUM** 이다. 종료할 프로세스를 특정할 수 없다(responder 는 `target` 을 프로세스로 쓴다).
 - 번들 룰의 `level` 은 원본이 아니라 **이 시스템의 대응 수준**이다. HIGH 는 명백히 악성이라 오탐 비용이 낮은 5개뿐이다: mimikatz 명령행, reg 로 SAM/SYSTEM/SECURITY 덤프, PowerShell 로 섀도 복사본 삭제, wbadmin 전체 백업 삭제, procdump 로 lsass 덤프. 원본이 high 인 mshta 원격 HTA, schtasks 임시 폴더, PlistBuddy 지속성은 정상 사용과 겹칠 수 있어 MEDIUM 으로 낮췄다. 낮춘 룰은 파일 주석에 원본 level 을 적었다.
 - CRITICAL 인 번들 룰은 없다.
+- **HIGH(kill)는 오탐이 곧 정상 프로세스 종료**라서 원본보다 좁게 옮겼다(코드 리뷰에서 걸린 오탐 반영). reg 덤프는 하이브 루트(`HKLM\SAM` 뒤가 공백이나 따옴표)만 본다(`HKLM\SYSTEM\CurrentControlSet\Services\Foo`, `HKLM\SOFTWARE\Samsung` 같은 정상 내보내기가 걸렸다). mimikatz 는 `module::function` 쌍과 Image `mimikatz.exe` 만 본다(`git commit -m "fix mimikatz rule"`, `cargo test token::tests` 가 걸렸다). procdump 는 Image 를 procdump 계열로 한정하고 대상은 `lsass` 만 본다(`bash -c ls -ma`, `git log -mp -- lsfoo` 가 걸렸다). 이름을 바꾼 procdump 와 하위 키 덤프는 잡지 못한다.
 
 ## 근거
 **에이전트가 보내는 필드에 맞춰 옮긴 것들** (원문 그대로는 안 걸리거나 영영 안 걸린다)
@@ -42,6 +43,7 @@ R1, R2 는 이벤트 여러 개를 시간 순으로 엮는 시퀀스 룰이다. 
 - **jar 리소스만(외부 파일 없이)**: 룰을 바꿀 때마다 이미지를 구워 재배포한다. 이 문서가 풀려는 문제 그대로다.
 - **Sigma correlation 으로 시퀀스 룰까지 이전**: R1, R2 는 pid/ppid 계보 확인, 이벤트 시각 순서(워터마크), 선행 버퍼 상한 같은 detector 내부 동작에 묶여 있다. Sigma correlation 은 이를 표현하지 못하고, 옮기면 [006](006-event-time-ordering.md) 의 순서 보장을 다시 증명해야 한다.
 - **pySigma 같은 전체 Sigma 엔진**: 자바 서비스에 외부 런타임을 붙여야 하고 백엔드 변환기도 쓸 일이 없다.
+- **룰 파일의 오탈자를 조용히 넘기기**: 빈 값의 contains/startswith/endswith(전부 걸린다), 같은 키 중복(뒤가 앞을 덮는다), 일치 modifier 둘 이상은 파싱 단계에서 거절한다.
 - **R3~R5 를 Sigma 로 이전**: 토큰 분리, 사용자명 한 칸을 강제하는 홈 경로 매칭, 삭제 제외, TLS 버전 집합 판정은 Sigma 문법에 없다. 비슷하게 옮기면 조각 검색으로 바꿨을 때 생긴 오탐(#174)이 돌아온다.
 - **ConfigMap 을 손으로 쓰기**: 번들 룰과 ConfigMap 이 갈라진다. 룰 파일에서 생성하는 스크립트를 두고 `scripts/check.sh` 가 어긋남을 잡는다.
 
