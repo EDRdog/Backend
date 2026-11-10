@@ -1,6 +1,7 @@
 package com.edrdog.apiservice.operations;
 
 import com.edrdog.apiservice.operations.web.OperationsHealthResponse;
+import com.edrdog.apiservice.selftest.SelfTestService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.HealthComponent;
 import org.springframework.boot.actuate.health.HealthEndpoint;
@@ -22,6 +23,7 @@ public class OperationsHealthService {
     private final KafkaLagInspector kafkaLagInspector;
     private final ClickHouseIngestionInspector ingestionInspector;
     private final HealthEndpoint healthEndpoint;
+    private final SelfTestService selfTest;
 
     private final String alertsTopic;
     private final String eventsTopic;
@@ -35,6 +37,7 @@ public class OperationsHealthService {
             KafkaLagInspector kafkaLagInspector,
             ClickHouseIngestionInspector ingestionInspector,
             HealthEndpoint healthEndpoint,
+            SelfTestService selfTest,
             @Value("${edrdog.kafka.alerts-topic}") String alertsTopic,
             @Value("${edrdog.kafka.events-topic}") String eventsTopic,
             @Value("${edrdog.kafka.alerts-consumer-groups}") String alertsConsumerGroups,
@@ -44,6 +47,7 @@ public class OperationsHealthService {
         this.kafkaLagInspector = kafkaLagInspector;
         this.ingestionInspector = ingestionInspector;
         this.healthEndpoint = healthEndpoint;
+        this.selfTest = selfTest;
         this.alertsTopic = alertsTopic;
         this.eventsTopic = eventsTopic;
         this.alertsConsumerGroups = parseGroups(alertsConsumerGroups);
@@ -64,7 +68,9 @@ public class OperationsHealthService {
         List<DependencyResult> dependencies = List.of(
                 DependencyStatuses.kafka(kafkaLag),
                 DependencyStatuses.clickhouse(ingestion),
-                DependencyStatuses.db(dbHealth()));
+                DependencyStatuses.db(dbHealth()),
+                // 자체시험 실패는 여기에만 싣는다. actuator 헬스에 넣으면 프로브(/actuator/health)가 파드를 재시작시킨다(ADR 029).
+                selfTest.dependency());
 
         return new OperationsHealthResponse(kafkaLag, ingestion, dependencies, Instant.now().toEpochMilli());
     }
