@@ -293,3 +293,32 @@ archiver 가 이 값을 판정 기록(`edrdog.alerts` 의 `target`)에 저장하
 프로세스를, 이름이 오면 파일명이 일치하는 프로세스를 찾는다.
 
 자기 자신과 PID 1 은 절대 종료하지 않는다.
+
+## 감사기록 (collector 가 api-service 로 넘기는 내부 계약)
+
+에이전트가 만든 감사기록(KISA EDR-BF-13.2)을 서버가 받는 자리다. 에이전트는 collector 로 올리고, collector 가 node_key 로 tenant 와 host 를 풀어 api-service 로 넘긴다. 이 계약은 에이전트 묶음이 collector 와 api-service 호출을 만들 때 그대로 쓴다. 근거는 `docs/design-docs/decisions/028-audit-log-in-api-service.md`.
+
+`POST /api/internal/audit` (api-service). `X-Internal-Key` 헤더로만 인증한다.
+
+```json
+{
+  "tenantId": 1,
+  "host": "host-a",
+  "events": [
+    { "ts": 1762800000000, "type": "integrity_check_result", "result": "failure", "detail": "binary hash mismatch" }
+  ]
+}
+```
+
+| 필드 | 규칙 |
+|---|---|
+| `tenantId` | 양수. collector 가 node_key 로 푼 값이다. 에이전트가 보낸 값을 쓰지 않는다 |
+| `host` | 1~255자. 마찬가지로 collector 가 푼 값 |
+| `events` | 1~100건. 한 건이라도 형식이 틀리면 400 으로 배치 전체를 받지 않는다 |
+| `events[].ts` | 사건이 난 시각, epoch millis, 0 보다 큼. 서버 시각보다 앞선 값은 받은 시각으로 맞춘다 |
+| `events[].type` | 소문자, 숫자, `_` 로 1~64자(`[a-z0-9_]{1,64}`). 서버는 형식만 본다. 서버가 쓰는 유형은 `AuditType` 에 있다 |
+| `events[].result` | `success` 또는 `failure` |
+| `events[].detail` | 짧은 설명. 500자를 넘으면 잘라서 저장한다. 비밀값을 넣지 않는다 |
+
+- 응답 `200 {"accepted": N}`. 키가 없거나 틀리면 `401`. 저장에 실패하면 `5xx` 이고 아무것도 저장하지 않으므로 호출자가 같은 배치를 다시 보내면 된다(중복 제거는 없다. 성공 응답을 못 받은 배치를 다시 보내면 중복 행이 생길 수 있다).
+- 저장된 기록은 행위자 종류 `agent`, 행위자 식별 `host` 로 보이고, 그 tenant 의 admin 이 `GET /api/audit` 로 조회한다.

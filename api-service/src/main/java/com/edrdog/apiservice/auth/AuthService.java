@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * 회원가입/로그인/로그아웃/토큰검증. 비밀번호는 BCrypt, 세션은 opaque 토큰 + DB 저장 방식.
@@ -71,6 +72,12 @@ public class AuthService {
         if (token != null) {
             sessions.deleteById(token);
         }
+    }
+
+    /** 감사기록용. 가입된 이메일이면 그 유저의 Principal, 아니면 빈 값. 로그인 실패 기록에 tenant 를 붙일 때 쓴다. */
+    public Optional<Principal> principalOfEmail(String email) {
+        return users.findByEmail(email)
+                .map(u -> new Principal(u.getId(), u.getTenantId(), u.getEmail(), u.getRole()));
     }
 
     public Principal resolve(String token) {

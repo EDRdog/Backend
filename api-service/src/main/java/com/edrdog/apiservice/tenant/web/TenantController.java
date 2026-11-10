@@ -1,5 +1,10 @@
 package com.edrdog.apiservice.tenant.web;
 
+import com.edrdog.apiservice.audit.AuditActor;
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
 import com.edrdog.apiservice.auth.AuthException;
 import com.edrdog.apiservice.auth.AuthService;
 import com.edrdog.apiservice.auth.Principal;
@@ -28,12 +33,14 @@ public class TenantController {
 
     private final TenantService tenants;
     private final AuthService auth;
+    private final AuditService audit;
     private final String internalKey;
 
-    public TenantController(TenantService tenants, AuthService auth,
+    public TenantController(TenantService tenants, AuthService auth, AuditService audit,
                             @Value("${edrdog.internal.key}") String internalKey) {
         this.tenants = tenants;
         this.auth = auth;
+        this.audit = audit;
         this.internalKey = internalKey;
     }
 
@@ -92,7 +99,12 @@ public class TenantController {
             @RequestBody ResolveTenantRequest req) {
         requireInternalKey(internalKeyHeader);
         // 못 찾은 이유(시크릿이 빈 값인지 틀린 값인지)는 알려주지 않는다. 대입 시도에 힌트가 된다.
-        return tenants.resolveTenant(req.enrollSecret())
+        var tenantId = tenants.resolveTenant(req.enrollSecret());
+        // enroll 결과 감사기록. api-service 가 아는 건 시크릿이 맞았는지뿐이라 host 는 모른다. 시크릿 값은 남기지 않는다.
+        audit.record(new AuditEntry(null, tenantId.orElse(null), AuditActor.AGENT, null, "unknown",
+                AuditType.AGENT_ENROLL, null, tenantId.isPresent() ? AuditResult.SUCCESS : AuditResult.FAILURE,
+                null, null));
+        return tenantId
                 .map(id -> ResponseEntity.ok(new ResolveTenantResponse(id)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

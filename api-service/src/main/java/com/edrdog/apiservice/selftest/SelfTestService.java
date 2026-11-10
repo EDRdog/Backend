@@ -1,5 +1,10 @@
 package com.edrdog.apiservice.selftest;
 
+import com.edrdog.apiservice.audit.AuditEntry;
+import com.edrdog.apiservice.audit.AuditResult;
+import com.edrdog.apiservice.audit.AuditService;
+import com.edrdog.apiservice.audit.AuditType;
+
 import com.edrdog.apiservice.notify.SlackWebhookClient;
 import com.edrdog.apiservice.operations.DependencyResult;
 import org.slf4j.Logger;
@@ -29,17 +34,23 @@ public class SelfTestService {
     private final IntegrityVerifier integrity;
     private final SlackWebhookClient slack;
     private final String webhookUrl;
+    private final AuditService audit;
+
+    @Value("${edrdog.selftest.run-on-startup:true}")
+    private boolean runOnStartup = true;
 
     public SelfTestService(SelfTestRunRepository runs,
                            SelfTestChecks checks,
                            IntegrityVerifier integrity,
                            SlackWebhookClient slack,
-                           @Value("${edrdog.selftest.notify-webhook-url:}") String webhookUrl) {
+                           @Value("${edrdog.selftest.notify-webhook-url:}") String webhookUrl,
+                           AuditService audit) {
         this.runs = runs;
         this.checks = checks;
         this.integrity = integrity;
         this.slack = slack;
         this.webhookUrl = webhookUrl;
+        this.audit = audit;
     }
 
     public SelfTestRun run(SelfTestRun.Trigger trigger, String requestedBy) {
@@ -51,6 +62,9 @@ public class SelfTestService {
         List<String> previouslyFailed = runs.findFirstByOrderByIdDesc()
                 .map(r -> SelfTestRun.failedNames(r.getItems())).orElse(List.of());
         SelfTestRun run = runs.save(SelfTestRun.of(trigger, startedAt, requestedBy, items));
+
+        auditResult(AuditType.SELF_TEST_RESULT, SelfTestItem.SELFTEST, trigger, items);
+        auditResult(AuditType.INTEGRITY_CHECK_RESULT, SelfTestItem.INTEGRITY, trigger, items);
 
         List<String> failed = SelfTestRun.failedNames(items);
         if (!failed.isEmpty()) {
@@ -70,6 +84,10 @@ public class SelfTestService {
 
     @EventListener(ApplicationReadyEvent.class)
     void runOnStartup() {
+        // 테스트는 끈다. 기동마다 남는 서버 전체 감사기록이 조직 범위 개수 검사에 섞인다
+        if (!runOnStartup) {
+            return;
+        }
         runQuietly(SelfTestRun.Trigger.STARTUP);
     }
 
@@ -109,5 +127,14 @@ public class SelfTestService {
         } catch (RuntimeException e) {
             log.warn("[SELFTEST-NOTIFY-FAIL] {}", e.getClass().getSimpleName());
         }
+    }
+
+    /** 분류 하나의 결과를 감사기록으로 남긴다. 서버 전체 사건이라 tenant 없이 system 행위자다. */
+    private void auditResult(String type, String category, SelfTestRun.Trigger trigger, List<SelfTestItem> items) {
+        List<SelfTestItem> mine = items.stream().filter(i -> category.equals(i.category())).toList();
+        List<String> failed = SelfTestRun.failedNames(mine);
+        audit.record(AuditEntry.system(null, type, trigger.name(),
+                failed.isEmpty() ? AuditResult.SUCCESS : AuditResult.FAILURE,
+                failed.isEmpty() ? mine.size() + "개 항목 이상 없음" : "실패: " + String.join(", ", failed)));
     }
 }

@@ -39,6 +39,7 @@ class SelfTestServiceTest {
     private SelfTestChecks checks;
     private IntegrityVerifier integrity;
     private SlackWebhookClient slack;
+    private com.edrdog.apiservice.audit.AuditService audit;
 
     @BeforeEach
     void setUp() {
@@ -46,13 +47,14 @@ class SelfTestServiceTest {
         checks = mock(SelfTestChecks.class);
         integrity = mock(IntegrityVerifier.class);
         slack = mock(SlackWebhookClient.class);
+        audit = mock(com.edrdog.apiservice.audit.AuditService.class);
         when(runs.save(any(SelfTestRun.class))).thenAnswer(inv -> inv.getArgument(0));
         when(checks.run()).thenReturn(List.of(SelfTestItem.pass(SelfTestItem.SELFTEST, "database", "ok")));
         when(integrity.verify()).thenReturn(List.of(SelfTestItem.skip(SelfTestItem.INTEGRITY, "baseline", "없음")));
     }
 
     private SelfTestService service(String webhookUrl) {
-        return new SelfTestService(runs, checks, integrity, slack, webhookUrl);
+        return new SelfTestService(runs, checks, integrity, slack, webhookUrl, audit);
     }
 
     private static SelfTestItem failed(String name) {
@@ -188,5 +190,24 @@ class SelfTestServiceTest {
         when(runs.findFirstByOrderByIdDesc()).thenThrow(new IllegalStateException("db down"));
 
         assertEquals("unknown", service("").dependency().status());
+    }
+
+    // 자체시험·무결성 결과는 서버 전체 사건이라 tenant 없이 system 행위자로 남는다(KISA BF-13 감사사건)
+    @Test
+    void eachRunRecordsSelfTestAndIntegrityResultsInTheAuditLog() {
+        when(checks.run()).thenReturn(List.of(failed("database")));
+
+        service("").run(Trigger.MANUAL, "admin@edrdog.com");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(com.edrdog.apiservice.audit.AuditEntry.class);
+        verify(audit, org.mockito.Mockito.times(2)).record(captor.capture());
+        var entries = captor.getAllValues();
+        assertEquals(List.of(com.edrdog.apiservice.audit.AuditType.SELF_TEST_RESULT,
+                        com.edrdog.apiservice.audit.AuditType.INTEGRITY_CHECK_RESULT),
+                entries.stream().map(com.edrdog.apiservice.audit.AuditEntry::type).toList());
+        assertEquals(com.edrdog.apiservice.audit.AuditResult.FAILURE, entries.get(0).result());
+        assertEquals(com.edrdog.apiservice.audit.AuditResult.SUCCESS, entries.get(1).result());   // SKIP 은 실패가 아니다
+        assertEquals(com.edrdog.apiservice.audit.AuditActor.SYSTEM, entries.get(0).actorType());
+        assertEquals(null, entries.get(0).tenantId());
     }
 }
