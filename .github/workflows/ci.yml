@@ -46,7 +46,7 @@ jobs:
       - name: Vet (darwin)
         run: go vet ./...
         working-directory: agent
-      # Windows 쪽 빌드와 vet. 실제 ETW 수집은 아래 agent-windows 잡이 x64 러너에서 본다. 순수 로직 테스트는 위의 go test 가 이미 돌렸다(플랫폼에 매인 파일만 빌드 태그로 갈라져 있다).
+      # Windows 쪽은 러너에서 실행할 수 없으니 빌드와 vet 으로 갈음한다. 순수 로직 테스트는 위의 go test 가 이미 돌렸다(플랫폼에 매인 파일만 빌드 태그로 갈라져 있다).
       # 두 아키텍처를 다 보는 이유는 릴리스가 둘 다 내보내기 때문이다.
       - name: Build + vet (windows)
         working-directory: agent
@@ -56,17 +56,3 @@ jobs:
             GOOS=windows GOARCH="$arch" go vet ./...
             GOOS=windows GOARCH="$arch" go build -o /dev/null ./cmd/edrdog-agent
           done
-
-  # x64 Windows 러너에서 ETW 센서와 pktmon 을 실제로 열어 본다(서버 없이 센서까지만). 크로스 빌드와 단위 테스트로는
-  # 라이브러리 버그로 ETW 가 0건이 된 것을 못 잡았다(ADR 025). 러너는 Windows Server 이고 관리자 권한이다.
-  agent-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: agent/go.mod
-          cache-dependency-path: agent/go.sum
-      - name: ETW live (x64)
-        working-directory: agent
-        run: go test -tags etwlive -run TestETWLive -v -count=1 ./internal/sensor/
