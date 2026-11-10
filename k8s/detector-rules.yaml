@@ -1,0 +1,904 @@
+# 이 파일은 scripts/gen-rules-configmap.sh 가 만든다. 직접 고치지 않는다.
+# 룰은 detector-service/src/main/resources/rules/ 에서 고치고 스크립트를 다시 돌린다.
+# detector 가 /etc/edrdog/rules 로 마운트해 30초마다 다시 읽는다(k8s/detector-service.yaml). 재배포 없이 반영된다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: detector-rules
+  namespace: edrdog
+  labels:
+    app: detector-service
+data:
+  bcdedit_boot_tamper.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_bcdedit_susp_execution.yml (id c9fbe8e9-119d-40a6-9b59-dd58a5d84429)
+    # 바꾼 것: OriginalFileName 조건을 뺐다. MITRE 첫 태그를 t1542.003 으로 올렸다.
+    title: Potential Ransomware or Unauthorized MBR Tampering Via Bcdedit.EXE
+    id: c9fbe8e9-119d-40a6-9b59-dd58a5d84429
+    name: bcdedit_boot_tamper
+    status: test
+    description: 'Detects potential malicious and unauthorized usage of bcdedit.exe'
+    author: '@neu5ron'
+    tags:
+      - attack.persistence
+      - attack.t1542.003
+      - attack.stealth
+      - attack.t1070
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\bcdedit.exe'
+      selection_cli:
+        CommandLine|contains:
+          - 'delete'
+          - 'deletevalue'
+          - 'import'
+          - 'safeboot'
+          - 'network'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  bitsadmin_download.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_bitsadmin_download.yml (id d059842b-6b9d-4ed1-b5c3-5b89143c6ede)
+    # 바꾼 것: OriginalFileName 조건을 뺐다. MITRE 첫 태그를 t1105 로 올렸다.
+    title: File Download Via Bitsadmin
+    id: d059842b-6b9d-4ed1-b5c3-5b89143c6ede
+    name: bitsadmin_download
+    status: test
+    description: 'Detects usage of bitsadmin downloading a file'
+    author: 'Michael Haag, FPT.EagleEye'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+      - attack.persistence
+      - attack.execution
+      - attack.stealth
+      - attack.t1197
+      - attack.s0190
+      - attack.t1036.003
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\bitsadmin.exe'
+      selection_cmd:
+        CommandLine|contains: ' /transfer '
+      selection_cli_1:
+        CommandLine|contains:
+          - ' /create '
+          - ' /addfile '
+      selection_cli_2:
+        CommandLine|contains: 'http'
+      condition: selection_img and (selection_cmd or all of selection_cli_*)
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  certutil_download.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_certutil_download.yml (id 19b08b1c-861d-4e75-a1ef-ea0c1baf202b)
+    # 바꾼 것: OriginalFileName 조건을 뺐다(에이전트가 보내지 않는다). MITRE 첫 태그를 t1105 로 올렸다.
+    title: Suspicious Download Via Certutil.EXE
+    id: 19b08b1c-861d-4e75-a1ef-ea0c1baf202b
+    name: certutil_download
+    status: test
+    description: 'Detects the execution of certutil with certain flags that allow the utility to download files.'
+    author: 'Florian Roth (Nextron Systems), Jonhnathan Ribeiro, oscd.community, Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+      - attack.stealth
+      - attack.t1027
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\certutil.exe'
+      selection_flags:
+        CommandLine|contains:
+          - 'urlcache '
+          - 'verifyctl '
+          - 'URL '
+      selection_http:
+        CommandLine|contains: 'http'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  dns_mega_userstorage.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/dns_query/dns_query_win_mega_nz.yml (id 613c03ba-0779-4a53-8a1f-47f914a4ded3)
+    # 바꾼 것: 없음.
+    title: DNS Query To MEGA Hosting Website
+    id: 613c03ba-0779-4a53-8a1f-47f914a4ded3
+    name: dns_mega_userstorage
+    status: test
+    description: 'Detects DNS queries for subdomains related to MEGA sharing website'
+    author: 'Aaron Greetham (@beardofbinary) - NCC Group'
+    tags:
+      - attack.exfiltration
+      - attack.t1567.002
+    logsource:
+      category: dns_query
+    detection:
+      selection:
+        QueryName|contains: 'userstorage.mega.co.nz'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  dns_tor_gateway.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/dns_query/dns_query_win_tor_onion_domain_query.yml (id b55ca2a3-7cff-4dda-8bdd-c7bfa63bf544)
+    # 바꾼 것: 없음(level high 는 dns 룰이라 MEDIUM 으로 깎인다).
+    title: DNS Query Tor .Onion Address
+    id: b55ca2a3-7cff-4dda-8bdd-c7bfa63bf544
+    name: dns_tor_gateway
+    status: test
+    description: 'Detects DNS queries to an ".onion" address related to Tor routing networks'
+    author: 'frack113'
+    tags:
+      - attack.command-and-control
+      - attack.t1090.003
+    logsource:
+      category: dns_query
+    detection:
+      selection:
+        QueryName|endswith:
+          - '.hiddenservice.net'
+          - '.onion.ca'
+          - '.onion.cab'
+          - '.onion.casa'
+          - '.onion.city'
+          - '.onion.direct'
+          - '.onion.dog'
+          - '.onion.glass'
+          - '.onion.gq'
+          - '.onion.ink'
+          - '.onion.it'
+          - '.onion.link'
+          - '.onion.lt'
+          - '.onion.lu'
+          - '.onion.nu'
+          - '.onion.pet'
+          - '.onion.plus'
+          - '.onion.rip'
+          - '.onion.sh'
+          - '.onion.to'
+          - '.onion.top'
+          - '.onion'
+          - '.s1.tor-gateways.de'
+          - '.s2.tor-gateways.de'
+          - '.s3.tor-gateways.de'
+          - '.s4.tor-gateways.de'
+          - '.s5.tor-gateways.de'
+          - '.t2w.pw'
+          - '.tor2web.ae.org'
+          - '.tor2web.blutmagie.de'
+          - '.tor2web.com'
+          - '.tor2web.fi'
+          - '.tor2web.io'
+          - '.tor2web.org'
+          - '.tor2web.xyz'
+          - '.torlink.co'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  file_lsass_dump_name.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/file/file_event/file_event_win_lsass_default_dump_file_names.yml (id a5a2d357-1ab8-4675-a967-ef9990a59391)
+    # 바꾼 것: 없음(level high 는 file 룰이라 MEDIUM 으로 깎인다).
+    title: LSASS Process Memory Dump Files
+    id: a5a2d357-1ab8-4675-a967-ef9990a59391
+    name: file_lsass_dump_name
+    status: test
+    description: 'Detects creation of files with names used by different memory dumping tools to create a memory dump of the LSASS process memory, which contains user credentials.'
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.credential-access
+      - attack.t1003.001
+    logsource:
+      category: file_event
+    detection:
+      selection_1:
+        TargetFilename|endswith:
+          - '\Andrew.dmp'
+          - '\Coredump.dmp'
+          - '\lsass.dmp'
+          - '\lsass.rar'
+          - '\lsass.zip'
+          - '\NotLSASS.zip'  # https://github.com/CCob/MirrorDump
+          - '\PPLBlade.dmp'  # https://github.com/tastypepperoni/PPLBlade
+          - '\rustive.dmp' # https://github.com/safedv/RustiveDump/blob/main/src/main.rs#L35
+      selection_2:
+        TargetFilename|contains:
+          - '\lsass_2'  # default format of procdump v9.0 is lsass_YYMMDD_HHmmss.dmp
+          - '\lsassdmp'
+          - '\lsassdump'
+      condition: 1 of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  file_mimikatz_artifacts.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/file/file_event/file_event_win_hktl_mimikatz_files.yml (id 9e099d99-44c2-42b6-a6d8-54c3545cab29)
+    # 바꾼 것: 없음(level critical 은 file 룰이라 MEDIUM 으로 깎인다).
+    title: HackTool - Mimikatz Kirbi File Creation
+    id: 9e099d99-44c2-42b6-a6d8-54c3545cab29
+    name: file_mimikatz_artifacts
+    status: test
+    description: 'Detects the creation of files created by mimikatz such as ".kirbi", "mimilsa.log", etc.'
+    author: 'Florian Roth (Nextron Systems), David ANDRE'
+    tags:
+      - attack.credential-access
+      - attack.t1558
+    logsource:
+      category: file_event
+    detection:
+      selection:
+        TargetFilename|endswith:
+          - '.kirbi' # Kerberos tickets
+          - 'mimilsa.log' # MemSSP default file
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: critical
+    level: medium
+  macos_csrutil_disable.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_csrutil_disable.yml (id 3603f18a-ec15-43a1-9af2-d196c8a7fec6)
+    # 바꾼 것: 없음.
+    title: System Integrity Protection (SIP) Disabled
+    id: 3603f18a-ec15-43a1-9af2-d196c8a7fec6
+    name: macos_csrutil_disable
+    status: test
+    description: 'Detects the use of csrutil to disable System Integrity Protection (SIP)'
+    author: 'Joseliyo Sanchez, @Joseliyo_Jstnk'
+    tags:
+      - attack.discovery
+      - attack.t1518.001
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        Image|endswith: '/csrutil'
+        CommandLine|contains: 'disable'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_disable_security_tools.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_disable_security_tools.yml (id ff39f1a6-84ac-476f-a1af-37fcdf53d7c0)
+    # 바꾼 것: 없음.
+    title: Disable Security Tools
+    id: ff39f1a6-84ac-476f-a1af-37fcdf53d7c0
+    name: macos_disable_security_tools
+    status: test
+    description: 'Detects disabling security tools'
+    author: 'Daniil Yugoslavskiy, oscd.community'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      launchctl_unload:
+        Image: '/bin/launchctl'
+        CommandLine|contains: 'unload'
+      security_plists:
+        CommandLine|contains:
+          - 'com.objective-see.lulu.plist'                     # Objective-See firewall management utility
+          - 'com.objective-see.blockblock.plist'               # Objective-See persistence locations watcher/blocker
+          - 'com.google.santad.plist'                          # google santa
+          - 'com.carbonblack.defense.daemon.plist'             # carbon black
+          - 'com.carbonblack.daemon.plist'                     # carbon black
+          - 'at.obdev.littlesnitchd.plist'                     # Objective Development Software firewall management utility
+          - 'com.tenablesecurity.nessusagent.plist'            # Tenable Nessus
+          - 'com.opendns.osx.RoamingClientConfigUpdater.plist' # OpenDNS Umbrella
+          - 'com.crowdstrike.falcond.plist'                    # Crowdstrike Falcon
+          - 'com.crowdstrike.userdaemon.plist'                 # Crowdstrike Falcon
+          - 'osquery'                                          # facebook osquery
+          - 'filebeat'                                         # elastic log file shipper
+          - 'auditbeat'                                        # elastic auditing agent/log shipper
+          - 'packetbeat'                                       # elastic network logger/shipper
+          - 'td-agent'                                         # fluentd log shipper
+      disable_gatekeeper:
+        Image: '/usr/sbin/spctl'
+        CommandLine|contains: 'disable'
+      condition: (launchctl_unload and security_plists) or disable_gatekeeper
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_dscl_add_admin.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_dscl_add_user_to_admin_group.yml (id b743623c-2776-40e0-87b1-682b975d0ca5)
+    # 바꾼 것: 없음.
+    title: User Added To Admin Group Via Dscl
+    id: b743623c-2776-40e0-87b1-682b975d0ca5
+    name: macos_dscl_add_admin
+    status: test
+    description: 'Detects attempts to create and add an account to the admin group via "dscl"'
+    author: 'Sohan G (D4rkCiph3r)'
+    tags:
+      - attack.persistence
+      - attack.initial-access
+      - attack.privilege-escalation
+      - attack.stealth
+      - attack.t1078.003
+    logsource:
+      category: process_creation
+    detection:
+      selection: # adds to admin group
+        Image|endswith: '/dscl'
+        CommandLine|contains|all:
+          - ' -append '
+          - ' /Groups/admin '
+          - ' GroupMembership '
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_keychain_dump.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_creds_from_keychain.yml (id b120b587-a4c2-4b94-875d-99c9807d6955)
+    # 바꾼 것: 없음(Image 의 전체 경로는 파일명 일치로 읽는다).
+    title: Credentials from Password Stores - Keychain
+    id: b120b587-a4c2-4b94-875d-99c9807d6955
+    name: macos_keychain_dump
+    status: test
+    description: 'Detects passwords dumps from Keychain'
+    author: 'Tim Ismilyaev, oscd.community, Florian Roth (Nextron Systems)'
+    tags:
+      - attack.credential-access
+      - attack.t1555.001
+    logsource:
+      category: process_creation
+    detection:
+      selection1:
+        Image: '/usr/bin/security'
+        CommandLine|contains:
+          - 'find-certificate'
+          - ' export '
+      selection2:
+        CommandLine|contains:
+          - ' dump-keychain '
+          - ' login-keychain '
+      condition: 1 of selection*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_plistbuddy_launchd_persistence.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_persistence_via_plistbuddy.yml (id 65d506d3-fcfe-4071-b4b2-bcefe721bbbb)
+    # 바꾼 것: level 을 high 에서 medium 으로 낮췄다(알림만).
+    title: Potential Persistence Via PlistBuddy
+    id: 65d506d3-fcfe-4071-b4b2-bcefe721bbbb
+    name: macos_plistbuddy_launchd_persistence
+    status: test
+    description: 'Detects potential persistence activity using LaunchAgents or LaunchDaemons via the PlistBuddy utility'
+    author: 'Sohan G (D4rkCiph3r)'
+    tags:
+      - attack.persistence
+      - attack.t1543.001
+      - attack.t1543.004
+      - attack.privilege-escalation
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        Image|endswith: '/PlistBuddy'
+        CommandLine|contains|all:
+          - 'RunAtLoad'
+          - 'true'
+        CommandLine|contains:
+          - 'LaunchAgents'
+          - 'LaunchDaemons'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  macos_sysadminctl_add_admin.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_sysadminctl_add_user_to_admin_group.yml (id 652c098d-dc11-4ba6-8566-c20e89042f2b)
+    # 바꾼 것: 없음.
+    title: User Added To Admin Group Via Sysadminctl
+    id: 652c098d-dc11-4ba6-8566-c20e89042f2b
+    name: macos_sysadminctl_add_admin
+    status: test
+    description: 'Detects attempts to create and add an account to the admin group via "sysadminctl"'
+    author: 'Sohan G (D4rkCiph3r)'
+    tags:
+      - attack.persistence
+      - attack.initial-access
+      - attack.privilege-escalation
+      - attack.stealth
+      - attack.t1078.003
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        # Creates and adds new user to admin group
+        Image|endswith: '/sysadminctl'
+        CommandLine|contains|all:
+          - ' -addUser '
+          - ' -admin '
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_tmutil_delete_backup.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_tmutil_delete_backup.yml (id 452df256-da78-427a-866f-49fa04417d74)
+    # 바꾼 것: 없음.
+    title: Time Machine Backup Deletion Attempt Via Tmutil - MacOS
+    id: 452df256-da78-427a-866f-49fa04417d74
+    name: macos_tmutil_delete_backup
+    status: test
+    description: 'Detects deletion of local Time Machine backups via "tmutil" which might be a sign of ransomware'
+    author: 'Pratinav Chandra'
+    tags:
+      - attack.impact
+      - attack.t1490
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        - Image|endswith: '/tmutil'
+        - CommandLine|contains: 'tmutil'
+      selection_cmd:
+        CommandLine|contains: 'delete'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_xattr_remove_quarantine.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_xattr_gatekeeper_bypass.yml (id f5141b6d-9f42-41c6-a7bf-2a780678b29b)
+    # 바꾼 것: 없음(level low 는 MEDIUM 으로 매핑된다).
+    title: Gatekeeper Bypass via Xattr
+    id: f5141b6d-9f42-41c6-a7bf-2a780678b29b
+    name: macos_xattr_remove_quarantine
+    status: test
+    description: 'Detects macOS Gatekeeper bypass via xattr utility'
+    author: 'Daniil Yugoslavskiy, oscd.community'
+    tags:
+      - attack.defense-impairment
+      - attack.t1553.001
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        Image|endswith: '/xattr'
+        CommandLine|contains|all:
+          - '-d'
+          - 'com.apple.quarantine'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: low
+    level: medium
+  mimikatz_command_line.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_hktl_mimikatz_command_line.yml (id a642964e-bead-4bed-8910-1bb4d63e3b4d)
+    # 바꾼 것: 없음.
+    title: HackTool - Mimikatz Execution
+    id: a642964e-bead-4bed-8910-1bb4d63e3b4d
+    name: mimikatz_command_line
+    status: test
+    description: 'Detection well-known mimikatz command line arguments'
+    author: 'Teymur Kheirkhabarov, oscd.community, David ANDRE (additional keywords), Tim Shelton'
+    tags:
+      - attack.credential-access
+      - attack.t1003.001
+      - attack.t1003.002
+      - attack.t1003.004
+      - attack.t1003.005
+      - attack.t1003.006
+    logsource:
+      category: process_creation
+    detection:
+      selection_tools_name:
+        CommandLine|contains:
+          - 'DumpCreds'
+          - 'mimikatz'
+      selection_function_names: # To cover functions from modules that are not in module_names
+        CommandLine|contains:
+          - '::aadcookie' # misc module
+          - '::detours' # misc module
+          - '::memssp' # misc module
+          - '::mflt' # misc module
+          - '::ncroutemon' # misc module
+          - '::ngcsign' # misc module
+          - '::printnightmare' # misc module
+          - '::skeleton' # misc module
+          - '::preshutdown'  # service module
+          - '::mstsc'  # ts module
+          - '::multirdp'  # ts module
+      selection_module_names:
+        CommandLine|contains:
+          - 'rpc::'
+          - 'token::'
+          - 'crypto::'
+          - 'dpapi::'
+          - 'sekurlsa::'
+          - 'kerberos::'
+          - 'lsadump::'
+          - 'privilege::'
+          - 'process::'
+          - 'vault::'
+      condition: 1 of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: high
+  mshta_remote_hta.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_mshta_http.yml (id b98d0db6-511d-45de-ad02-e82a98729620)
+    # 바꾼 것: OriginalFileName 조건을 뺐다. level 을 high 에서 medium 으로 낮췄다(알림만).
+    title: Remotely Hosted HTA File Executed Via Mshta.EXE
+    id: b98d0db6-511d-45de-ad02-e82a98729620
+    name: mshta_remote_hta
+    status: test
+    description: 'Detects execution of the "mshta" utility with an argument containing the "http" keyword, which could indicate that an attacker is executing a remotely hosted malicious hta file'
+    author: 'Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.execution
+      - attack.stealth
+      - attack.t1218.005
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\mshta.exe'
+      selection_cli:
+        CommandLine|contains:
+          - 'http://'
+          - 'https://'
+          - 'ftp://'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  msiexec_web_install.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_msiexec_web_install.yml (id f7b5f842-a6af-4da5-9e95-e32478f3cd2f)
+    # 바꾼 것: MITRE 첫 태그를 t1105 로 올렸다. 에이전트는 첫 토큰(argv0)을 실행 파일 전체 경로로 바꿔 보내므로 msiexec 앞의 공백을 뺐다(공백이 있으면 msiexec 를 직접 실행한 경우가 안 걸린다).
+    title: MsiExec Web Install
+    id: f7b5f842-a6af-4da5-9e95-e32478f3cd2f
+    name: msiexec_web_install
+    status: test
+    description: 'Detects suspicious msiexec process starts with web addresses as parameter'
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+      - attack.stealth
+      - attack.t1218.007
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains|all:
+          - 'msiexec'
+          - '://'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  net_user_add.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_net_user_add.yml (id cd219ff3-fa99-45d4-8380-a7d15116c6dc)
+    # 바꾼 것: OriginalFileName 조건을 뺐다.
+    title: New User Created Via Net.EXE
+    id: cd219ff3-fa99-45d4-8380-a7d15116c6dc
+    name: net_user_add
+    status: test
+    description: 'Identifies the creation of local users via the net.exe command.'
+    author: 'Endgame, JHasenbusch (adapted to Sigma for oscd.community)'
+    tags:
+      - attack.persistence
+      - attack.t1136.001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\net.exe'
+          - '\net1.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - 'user'
+          - 'add'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  netsh_firewall_disable.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_netsh_fw_disable.yml (id 57c4bf16-227f-4394-8ec7-1b745ee061c3)
+    # 바꾼 것: OriginalFileName 조건을 뺐다.
+    title: Firewall Disabled via Netsh.EXE
+    id: 57c4bf16-227f-4394-8ec7-1b745ee061c3
+    name: netsh_firewall_disable
+    status: test
+    description: 'Detects netsh commands that turns off the Windows firewall'
+    author: 'Fatih Sirin'
+    tags:
+      - attack.defense-impairment
+      - attack.t1686.003
+      - attack.s0108
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\netsh.exe'
+      selection_cli_1:
+        # Example: netsh firewall set opmode disable
+        CommandLine|contains|all:
+          - 'firewall'
+          - 'set'
+          - 'opmode'
+          - 'disable'
+      selection_cli_2:
+        # Example: netsh advfirewall set currentprofile state off
+        CommandLine|contains|all:
+          - 'advfirewall'
+          - 'set'
+          - 'state'
+          - 'off'
+      condition: selection_img and 1 of selection_cli_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  ntdsutil_snapshot_mount.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_ntdsutil_susp_usage.yml (id a58353df-af43-4753-bad0-cd83ef35eef5)
+    # 바꾼 것: OriginalFileName 조건을 뺐다.
+    title: Suspicious Usage Of Active Directory Diagnostic Tool (ntdsutil.exe)
+    id: a58353df-af43-4753-bad0-cd83ef35eef5
+    name: ntdsutil_snapshot_mount
+    status: test
+    description: 'Detects execution of ntdsutil.exe to perform different actions such as restoring snapshots...etc.'
+    author: 'Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.credential-access
+      - attack.t1003.003
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\ntdsutil.exe'
+      selection_cli:
+        - CommandLine|contains|all:
+            - 'snapshot'
+            - 'mount ' # mounts a specific snapshot
+        - CommandLine|contains|all:
+            # The shortest form of "activate" can be "ac". But "act", "acti"...etc are also valid forms
+            # Same case with the "instance" flag
+            - 'ac'
+            - ' i'
+            - ' ntds'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  powershell_defender_exclusion.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_defender_exclusion.yml (id 17769c90-230e-488b-a463-e05c08e9d48f)
+    # 바꾼 것: 없음.
+    title: Powershell Defender Exclusion
+    id: 17769c90-230e-488b-a463-e05c08e9d48f
+    name: powershell_defender_exclusion
+    status: test
+    description: 'Detects requests to exclude files, folders or processes from Antivirus scanning using PowerShell cmdlets'
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      selection1:
+        CommandLine|contains:
+          - 'Add-MpPreference '
+          - 'Set-MpPreference '
+      selection2:
+        CommandLine|contains:
+          - ' -ExclusionPath '
+          - ' -ExclusionExtension '
+          - ' -ExclusionProcess '
+          - ' -ExclusionIpAddress '
+      condition: all of selection*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  powershell_encoded_command.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_base64_encoded_cmd.yml (id ca2092a1-c273-4878-9b4b-0d60115bf5ea)
+    # 바꾼 것: OriginalFileName 조건을 뺐다. 에이전트가 -enc 계열 값을 <redacted> 로 가려서 보내므로 selection_redacted 를 더했다(없으면 이 룰은 -enc 로는 영영 안 걸린다).
+    title: Suspicious Encoded PowerShell Command Line
+    id: ca2092a1-c273-4878-9b4b-0d60115bf5ea
+    name: powershell_encoded_command
+    status: test
+    description: 'Detects suspicious powershell process starts with base64 encoded commands (e.g. Emotet)'
+    author: 'Florian Roth (Nextron Systems), Markus Neis, Jonhnathan Ribeiro, Daniil Yugoslavskiy, Anton Kutepov, oscd.community'
+    tags:
+      - attack.execution
+      - attack.t1059.001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_cli_enc:
+        CommandLine|contains: ' -e' # covers -en and -enc
+      selection_cli_content:
+        CommandLine|contains:
+          - ' JAB'
+          - ' SUVYI'
+          - ' SQBFAFgA'
+          - ' aQBlAHgA'
+          - ' aWV4I'
+          - ' IAA'
+          - ' IAB'
+          - ' UwB'
+          - ' cwB'
+      # 에이전트는 -enc, -encoded, -encodedcommand 뒤의 값을 자격증명 보호로 <redacted> 로 바꿔 보낸다.
+      # 그 값은 위 base64 패턴으로 볼 수 없어서, 가려진 표시 자체를 인코딩 실행의 증거로 본다.
+      selection_redacted:
+        CommandLine|contains:
+          - ' -enc <redacted>'
+          - ' -encoded <redacted>'
+          - ' -encodedcommand <redacted>'
+          - ' /enc <redacted>'
+          - ' /encoded <redacted>'
+          - ' /encodedcommand <redacted>'
+      selection_standalone:
+        CommandLine|contains:
+          - '.exe -ENCOD '
+          - ' BA^J e-' # Reversed
+      filter_optional_remote_signed:
+        CommandLine|contains: ' -ExecutionPolicy remotesigned '
+      condition: selection_img and (all of selection_cli_* or selection_redacted or selection_standalone) and not 1 of filter_optional_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  powershell_shadowcopy_delete.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_shadowcopy_deletion.yml (id 21ff4ca9-f13a-41ad-b828-0077b2af2e40)
+    # 바꾼 것: 없음.
+    title: Deletion of Volume Shadow Copies via WMI with PowerShell
+    id: 21ff4ca9-f13a-41ad-b828-0077b2af2e40
+    name: powershell_shadowcopy_delete
+    status: test
+    description: 'Detects deletion of Windows Volume Shadow Copies with PowerShell code and Get-WMIObject. This technique is used by numerous ransomware families such as Sodinokibi/REvil'
+    author: 'Tim Rauch, Elastic (idea)'
+    tags:
+      - attack.impact
+      - attack.t1490
+    logsource:
+      category: process_creation
+    detection:
+      selection_get:
+        CommandLine|contains:
+          - 'Get-WmiObject'
+          - 'gwmi'
+          - 'Get-CimInstance'
+          - 'gcim'
+      selection_shadowcopy:
+        CommandLine|contains: 'Win32_ShadowCopy'
+      selection_delete:
+        CommandLine|contains:
+          - '.Delete()'
+          - 'Remove-WmiObject'
+          - 'rwmi'
+          - 'Remove-CimInstance'
+          - 'rcim'
+      condition: all of selection*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: high
+  procdump_lsass.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_sysinternals_procdump_lsass.yml (id 5afee48e-67dd-4e03-a783-f74259dcf998)
+    # 바꾼 것: windash modifier 를 지원하지 않아 - 와 / 변형을 값으로 풀어 적었다. MITRE 첫 태그를 t1003.001 로 올렸다.
+    title: Potential LSASS Process Dump Via Procdump
+    id: 5afee48e-67dd-4e03-a783-f74259dcf998
+    name: procdump_lsass
+    status: test
+    description: 'Detects suspicious uses of the SysInternals Procdump utility by using a special command line parameter in combination with the lsass.exe process.'
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.credential-access
+      - attack.t1003.001
+      - attack.stealth
+      - attack.t1036
+      - car.2013-05-009
+    logsource:
+      category: process_creation
+    detection:
+      selection_flags:
+        CommandLine|contains:
+          - ' -ma '
+          - ' /ma '
+          - ' -mm ' # Mini dump
+          - ' /mm '
+          - ' -mp ' # Miniplus dump
+          - ' /mp '
+      selection_process:
+        CommandLine|contains:
+          - ' ls' # Short for lsass
+          - ' keyiso'
+          - ' samss'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: high
+  reg_dump_sensitive_hives.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_reg_dumping_sensitive_hives.yml (id fd877b94-9bb5-4191-bb25-d79cbd93c167)
+    # 바꾼 것: OriginalFileName 조건과 유니코드 변형 문자열(ˢave 등)을 뺐다.
+    title: Dumping of Sensitive Hives Via Reg.EXE
+    id: fd877b94-9bb5-4191-bb25-d79cbd93c167
+    name: reg_dump_sensitive_hives
+    status: test
+    description: 'Detects the usage of "reg.exe" in order to dump sensitive registry hives. This includes SAM, SYSTEM and SECURITY hives.'
+    author: 'Teymur Kheirkhabarov, Endgame, JHasenbusch, Daniil Yugoslavskiy, oscd.community, frack113'
+    tags:
+      - attack.credential-access
+      - attack.t1003.002
+      - attack.t1003.004
+      - attack.t1003.005
+      - car.2013-07-001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\reg.exe'
+      selection_cli_flag:
+        CommandLine|contains:
+          - ' save '
+          - ' export '
+      selection_cli_hklm:
+        CommandLine|contains:
+          - 'hklm'
+          - 'hkey_local_machine'
+      selection_cli_hive:
+        CommandLine|contains:
+          - '\system'
+          - '\sam'
+          - '\security'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: high
+  schtasks_create_temp.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_schtasks_creation_temp_folder.yml (id 39019a4e-317f-4ce3-ae63-309a8c6b53c5)
+    # 바꾼 것: level 을 high 에서 medium 으로 낮췄다(알림만).
+    title: Suspicious Scheduled Task Creation Involving Temp Folder
+    id: 39019a4e-317f-4ce3-ae63-309a8c6b53c5
+    name: schtasks_create_temp
+    status: test
+    description: 'Detects the creation of scheduled tasks that involves a temporary folder and runs only once'
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.persistence
+      - attack.t1053.005
+      - attack.privilege-escalation
+      - attack.execution
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        Image|endswith: '\schtasks.exe'
+        CommandLine|contains|all:
+          - ' /create '
+          - ' /sc once '
+          - '\Temp\'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: medium
+  wbadmin_delete_all_backups.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_wbadmin_delete_all_backups.yml (id 639c9081-f482-47d3-a0bd-ddee3d4ecd76)
+    # 바꾼 것: OriginalFileName 조건을 뺐다.
+    title: All Backups Deleted Via Wbadmin.EXE
+    id: 639c9081-f482-47d3-a0bd-ddee3d4ecd76
+    name: wbadmin_delete_all_backups
+    status: test
+    description: 'Detects the deletion of all backups or system state backups via "wbadmin.exe". This technique is used by numerous ransomware families and actors.'
+    author: 'frack113, Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.impact
+      - attack.t1490
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\wbadmin.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - 'delete'
+          - 'backup' # Also covers "SYSTEMSTATEBACKUP"
+        CommandLine|contains: 'keepVersions:0'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+    level: high
