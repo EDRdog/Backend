@@ -933,3 +933,65 @@ func TestSessionErrorHint(t *testing.T) {
 		})
 	}
 }
+
+// Kernel-Process 시작(전체 경로)이 먼저 오고, 같은 PID 의 시스템 프로세스 시작(명령행, 16진수 PID)이 뒤따른다.
+func TestProcessJoinMergesCommandLineIntoHeldStart(t *testing.T) {
+	var j ProcessJoin
+	if _, ok := j.Hold(map[string]string{"ProcessID": "5136", "ImageName": `\Device\HarddiskVolume3\Windows\System32\cmd.exe`}, etwAt); ok {
+		t.Fatal("명령행이 오기 전에는 들고 있어야 한다")
+	}
+	got, ok := j.Take(map[string]string{"ProcessId": "0x1410", "CommandLine": `"C:\WINDOWS\system32\cmd.exe" /c exit`})
+	if !ok || got.Props["CommandLine"] != `"C:\WINDOWS\system32\cmd.exe" /c exit` || got.Props["ImageName"] == "" || !got.At.Equal(etwAt) {
+		t.Fatalf("ok=%v got=%v, 경로와 명령행이 시작 시각 그대로 합쳐져야 한다", ok, got)
+	}
+	if _, ok := j.Take(map[string]string{"ProcessId": "0x1410", "CommandLine": "x"}); ok {
+		t.Fatal("한 번 합친 시작은 다시 나오면 안 된다")
+	}
+}
+
+// 시스템 이벤트가 먼저 와도 명령행을 잃지 않는다. 같은 세션이라도 순서가 늘 보장되지는 않는다.
+func TestProcessJoinKeepsCommandLineThatArrivesFirst(t *testing.T) {
+	var j ProcessJoin
+	if _, ok := j.Take(map[string]string{"ProcessId": "0x2A", "CommandLine": "a.exe -x"}); ok {
+		t.Fatal("짝이 없으면 내보낼 것이 없다")
+	}
+	got, ok := j.Hold(map[string]string{"ProcessID": "42", "ImageName": "a.exe"}, etwAt)
+	if !ok || got.Props["CommandLine"] != "a.exe -x" {
+		t.Fatalf("ok=%v got=%v, 먼저 온 명령행을 붙여 바로 내보내야 한다", ok, got)
+	}
+}
+
+// 짝이 끝내 안 오면 종료 때, 원래 시작 시각으로 내보낸다. 버리면 프로세스 이벤트가 사라진다.
+func TestProcessJoinReleasesHeldStartOnStop(t *testing.T) {
+	var j ProcessJoin
+	j.Hold(map[string]string{"ProcessID": "42", "ImageName": "a.exe"}, etwAt)
+	got, ok := j.Release("42")
+	if !ok || got.Props["ImageName"] != "a.exe" || !got.At.Equal(etwAt) {
+		t.Fatalf("ok=%v got=%v", ok, got)
+	}
+	if _, ok := j.Release("42"); ok {
+		t.Fatal("두 번 나오면 안 된다")
+	}
+}
+
+// 오래 사는 프로세스는 짝을 잃으면 끝날 때까지 안 나온다. 기한이 지나면 꺼낸다.
+func TestProcessJoinExpiresStartsHeldTooLong(t *testing.T) {
+	var j ProcessJoin
+	j.Hold(map[string]string{"ProcessID": "1", "ImageName": "old.exe"}, etwAt)
+	j.Hold(map[string]string{"ProcessID": "2", "ImageName": "new.exe"}, etwAt.Add(processJoinWait))
+	got := j.Expire(etwAt.Add(processJoinWait + time.Millisecond))
+	if len(got) != 1 || got[0].Props["ImageName"] != "old.exe" {
+		t.Fatalf("got=%v, 기한이 지난 것만 나와야 한다", got)
+	}
+	if _, ok := j.Release("2"); !ok {
+		t.Fatal("기한이 안 지난 것은 남아 있어야 한다")
+	}
+}
+
+// PID 를 못 읽으면 짝을 지을 수 없으니 기다리지 않고 바로 내보낸다.
+func TestProcessJoinEmitsAtOnceWhenPIDUnreadable(t *testing.T) {
+	var j ProcessJoin
+	if _, ok := j.Hold(map[string]string{"ImageName": "a.exe"}, etwAt); !ok {
+		t.Fatal("PID 가 없으면 바로 나와야 한다")
+	}
+}

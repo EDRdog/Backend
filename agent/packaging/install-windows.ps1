@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     EDRdog 에이전트를 Windows 에 설치한다.
 
@@ -11,8 +11,8 @@
 
     macOS 와 달리 사람이 승인할 단계가 없다. ETW 는 LocalSystem 이면 권한이 이미 있다.
 
-    주의: 이 스크립트와 Windows ETW 센서는 아직 실제 Windows 기기에서 검증되지 않았다.
-    크로스 빌드와 순수 로직 단위 테스트만 통과한 상태다. agent/README.md 의 검증 절차를 참고해라.
+    Windows 11 ARM64 VM 에서만 설치까지 돌려 봤다(2026-11-11). x64 실기기는 아직이다.
+    agent/README.md 의 Windows 실기기 검증 절차를 참고해라.
 
 .PARAMETER Server
     수집 서버 주소. 호스트:포트 형식이다.
@@ -152,6 +152,14 @@ New-Service -Name $ServiceName `
     -DisplayName 'EDRdog Agent' `
     -Description '엔드포인트 행위를 수집해 EDRdog 서버로 보낸다' `
     -StartupType Automatic | Out-Null
+
+# 센서가 전부 멈추면 에이전트가 종료 코드 1 로 끝난다(ADR 025). 그때 SCM 이 1분 뒤 다시 띄운다.
+# failureflag 1 이 없으면 SCM 은 정상 정지 보고(종료 코드만 1)를 실패로 치지 않아 재시작하지 않는다.
+# 하루 동안 실패가 없으면 실패 횟수를 되돌린다.
+sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failure 종료 코드 $LASTEXITCODE)" }
+sc.exe failureflag $ServiceName 1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "서비스 재시작 설정에 실패했다(sc.exe failureflag 종료 코드 $LASTEXITCODE)" }
 
 Start-Service -Name $ServiceName
 Start-Sleep -Seconds 3

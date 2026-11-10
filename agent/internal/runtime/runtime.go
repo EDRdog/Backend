@@ -81,17 +81,20 @@ func (r *Runtime) Flush(ctx context.Context) error {
 
 // Run 은 센서를 모두 띄우고 주기마다 Flush 한다.
 // ctx 가 끝나면 센서를 멈추고 남은 이벤트를 마지막으로 흘려보낸 뒤 nil 을 돌려준다.
-// 종료는 정상 동작이므로 오류로 올리지 않는다.
+// 종료는 정상 동작이므로 오류로 올리지 않는다. 센서가 전부 오류로 멈추면 오류를 돌려준다.
 func (r *Runtime) Run(ctx context.Context, sensors []Sensor) error {
 	// 채널 용량은 BatchSize 를 따라간다. 좁히면 한 배치를 보내는 동안 센서가 밀린다.
 	events := make(chan event.Event, r.opts.BatchSize)
 	sensorCtx, stopSensors := context.WithCancel(ctx)
 	defer stopSensors()
 
+	// 오류로 멈춘 센서를 센다. 전부 멈췄는데 계속 돌면 이벤트 0건으로 멀쩡해 보인다.
+	failed := make(chan struct{}, len(sensors))
 	for _, s := range sensors {
 		go func(s Sensor) {
 			if err := s.Run(sensorCtx, events); err != nil && !errors.Is(err, context.Canceled) {
 				r.log.Error("센서가 멈췄다", "sensor", s.Name(), "err", err)
+				failed <- struct{}{}
 			}
 		}(s)
 	}
@@ -99,22 +102,33 @@ func (r *Runtime) Run(ctx context.Context, sensors []Sensor) error {
 	ticker := time.NewTicker(r.opts.FlushInterval)
 	defer ticker.Stop()
 
+	stopped := 0
 	for {
 		select {
 		case e := <-events:
 			r.buf.Add(e)
 		case <-ticker.C:
 			r.flushLogged(ctx)
+		case <-failed:
+			if stopped++; stopped == len(sensors) {
+				r.shutdown(ctx, events)
+				return errors.New("모든 센서가 멈췄다. 위 센서 오류를 확인해라")
+			}
 		case <-ctx.Done():
 			stopSensors()
-			r.drainChannel(events)
-			// 종료 직전 남은 이벤트까지 보낸다. 끝난 ctx 를 그대로 넘기면 마지막 전송이 바로 실패한다.
-			shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.opts.FlushInterval)
-			defer cancel()
-			r.flushLogged(shutdown)
+			r.shutdown(ctx, events)
 			return nil
 		}
 	}
+}
+
+// shutdown 은 채널에 남은 이벤트를 옮기고 마지막으로 흘려보낸다.
+// 끝난 ctx 를 그대로 넘기면 마지막 전송이 바로 실패한다.
+func (r *Runtime) shutdown(ctx context.Context, events <-chan event.Event) {
+	r.drainChannel(events)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.opts.FlushInterval)
+	defer cancel()
+	r.flushLogged(ctx)
 }
 
 // drainChannel 은 센서가 이미 채널에 넣어 둔 이벤트를 버퍼로 옮긴다. 이걸 건너뛰면 채널에 남은 이벤트가 그대로 사라진다.

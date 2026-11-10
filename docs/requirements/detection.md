@@ -60,7 +60,7 @@
 
 | ID | 확인할 것 | 방법 | 상태 |
 |---|---|---|---|
-| DET-M1 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차 | 미구현 |
+| DET-M1 | Windows 실기기에서 ETW 센서가 이벤트를 낸다 | `agent/README.md` 의 Windows 실기기 검증 절차. ARM64 VM 에서만 봤다(`docs/requirements/ingest.md` AGT-M2) | 수동 |
 | DET-M2 | 실제 단말에서 R2 가 끝까지 흐른다 | 에이전트 설치 후 다운로드·실행 시나리오를 돌려 Slack 알림까지 확인 | 수동 |
 | DET-M3 | 운영 파드에서 ConfigMap 을 고치면 재배포 없이 새 룰이 적용된다 | 배포 후 `detector-rules` 에서 룰 하나를 고쳐 apply 하고, 약 2분 뒤 detector 로그의 `탐지 룰 N개 적용` 과 해당 룰의 알림을 확인(배포서버 명령은 사람이 실행) | 미구현 |
 | DET-M4 | KISA 탐지 항목(BF-14/15/16, SE-01 취지)을 자체 시험으로 재면 수집→탐지→대응이 돌고 탐지율이 나온다 | 실단말에서 `scripts/detection-test/run.sh --run` 을 돌려 결과표와 탐지율을 확인. 설계와 분모·측정창 규칙은 `docs/exec-plans/completed/kisa-edr-detection-test.md` (재시작 후 10분 안에는 재지 않는다) | 수동 |
