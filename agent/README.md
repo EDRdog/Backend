@@ -48,7 +48,7 @@ CREATE), L7(TLS 1.3, SNI example.org) 다섯 종이 ClickHouse 까지 들어왔�
 
 아직 안 본 것:
 
-- **x64 실기기.** 실사용 PC 는 대부분 x64 다. 위 결과는 ARM64 VM 조건이다
+- **x64 데스크톱 Windows.** 실사용 PC 는 대부분 x64 다. 위 결과는 ARM64 VM 조건이다. x64 는 Windows Server 2025 CI 러너에서 센서까지만 본다(`.github/workflows/ci.yml` 의 `agent-windows`, `internal/sensor/etw_live_windows_test.go`). 서버 전송, kill, 서비스 설치는 x64 에서 본 적이 없다
 - Defender 가 pktmon 조작을 막는지는 짧게 몇 번 돌려 막히지 않은 것까지만 봤다. 공격 기법으로
   공개된 방식이라 휴리스틱 탐지가 실재하고, 오래 돌리거나 다른 Defender 버전에서는 다를 수 있다
 - 서버가 내려주는 설치 스크립트(`api-service/.../install/windows.ps1`). `packaging/install-windows.ps1`

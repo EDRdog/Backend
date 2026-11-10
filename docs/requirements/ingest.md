@@ -47,6 +47,7 @@
 | AGT-24 | 센서가 전부 오류로 멈추면 에이전트가 오류로 끝난다. 일부만 멈추면 나머지로 계속 수집한다 | `agent/internal/runtime/runtime_test.go::TestRunFailsWhenEverySensorStops`, `agent/internal/runtime/runtime_test.go::TestRunKeepsGoingWhenOneSensorStops` | `docs/design-docs/decisions/025-vendor-patched-golang-etw.md` | 자동 |
 | AGT-25 | 서버 등록과 첫 하트비트가 실패해도 에이전트가 끝나지 않고 간격을 늘려 가며 다시 시도한다 | `agent/cmd/edrdog-agent/retry_test.go::TestRetryKeepsTryingUntilSuccess`, `agent/cmd/edrdog-agent/retry_test.go::TestRetryStopsWhenContextEnds` | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 자동 |
 | AGT-26 | Windows 프로세스 시작은 같은 PID 의 시스템 프로세스 시작과 합쳐 명령행을 싣는다. 어느 쪽이 먼저 와도 합치고, 짝이 2초 안에 안 오거나 프로세스가 끝나면 시작 시각 그대로 내보낸다 | `agent/internal/sensor/etw_map_test.go::TestProcessJoinMergesCommandLineIntoHeldStart`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinKeepsCommandLineThatArrivesFirst`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinReleasesHeldStartOnStop`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinExpiresStartsHeldTooLong`, `agent/internal/sensor/etw_map_test.go::TestProcessJoinEmitsAtOnceWhenPIDUnreadable` | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 자동 |
+| AGT-27 | x64 Windows 에서 ETW 센서와 pktmon 이 실제로 열려 다섯 종(script, network, dns, file, l7)을 내고, 곧 끝나는 프로세스 50개 중 45개 이상의 명령행을 싣는다 | `agent/internal/sensor/etw_live_windows_test.go::TestETWLive` (CI `agent-windows` 잡, Windows Server 2025 러너, 관리자) | `docs/design-docs/decisions/026-windows-cmdline-from-system-process-provider.md` | 자동 |
 
 ## 수동 확인
 
