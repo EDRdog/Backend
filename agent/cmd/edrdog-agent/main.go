@@ -131,13 +131,16 @@ func runAgent(ctx context.Context, opts options, log *slog.Logger) error {
 
 	log.Info("수집 시작", "sensors", names, "flush", flush, "watch", beat.Config.WatchPaths)
 
-	// 수집과 조치는 서로를 기다리면 안 된다.
+	// 수집과 조치는 서로를 기다리면 안 된다. 수집이 끝나면(센서 전멸 포함) 조치 채널도 닫는다.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var wg sync.WaitGroup
 	var collectErr error
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		collectErr = engine.Run(ctx, sensors)
+		cancel()
 	}()
 	go func() {
 		defer wg.Done()
