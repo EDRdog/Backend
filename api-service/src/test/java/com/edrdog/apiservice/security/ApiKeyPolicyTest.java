@@ -47,6 +47,12 @@ class ApiKeyPolicyTest {
     }
 
     @Test
+    void auditQueryIsExemptBecauseItUsesSessionBearer() {
+        assertTrue(policy.isExempt("/api/audit"));
+        assertTrue(policy.isExempt("/api/internal/audit"));
+    }
+
+    @Test
     void 에이전트_수집_경로는_이제_api_service_에_없다() {
         // 수집 입구는 collector-service 로 옮겼다. 예외를 남겨 두면 나중에 /api/agent/* 를 다시 만들 때 문이 열린 채로 열린다.
         assertFalse(policy.isExempt("/api/agent/enroll"));
