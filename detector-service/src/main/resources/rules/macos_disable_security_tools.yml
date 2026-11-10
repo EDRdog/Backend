@@ -1,0 +1,41 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_disable_security_tools.yml (id ff39f1a6-84ac-476f-a1af-37fcdf53d7c0)
+# 바꾼 것: 없음.
+title: Disable Security Tools
+id: ff39f1a6-84ac-476f-a1af-37fcdf53d7c0
+name: macos_disable_security_tools
+status: test
+description: 'Detects disabling security tools'
+author: 'Daniil Yugoslavskiy, oscd.community'
+tags:
+  - attack.defense-impairment
+  - attack.t1685
+logsource:
+  category: process_creation
+detection:
+  launchctl_unload:
+    Image: '/bin/launchctl'
+    CommandLine|contains: 'unload'
+  security_plists:
+    CommandLine|contains:
+      - 'com.objective-see.lulu.plist'                     # Objective-See firewall management utility
+      - 'com.objective-see.blockblock.plist'               # Objective-See persistence locations watcher/blocker
+      - 'com.google.santad.plist'                          # google santa
+      - 'com.carbonblack.defense.daemon.plist'             # carbon black
+      - 'com.carbonblack.daemon.plist'                     # carbon black
+      - 'at.obdev.littlesnitchd.plist'                     # Objective Development Software firewall management utility
+      - 'com.tenablesecurity.nessusagent.plist'            # Tenable Nessus
+      - 'com.opendns.osx.RoamingClientConfigUpdater.plist' # OpenDNS Umbrella
+      - 'com.crowdstrike.falcond.plist'                    # Crowdstrike Falcon
+      - 'com.crowdstrike.userdaemon.plist'                 # Crowdstrike Falcon
+      - 'osquery'                                          # facebook osquery
+      - 'filebeat'                                         # elastic log file shipper
+      - 'auditbeat'                                        # elastic auditing agent/log shipper
+      - 'packetbeat'                                       # elastic network logger/shipper
+      - 'td-agent'                                         # fluentd log shipper
+  disable_gatekeeper:
+    Image: '/usr/sbin/spctl'
+    CommandLine|contains: 'disable'
+  condition: (launchctl_unload and security_plists) or disable_gatekeeper
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

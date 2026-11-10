@@ -1,0 +1,51 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_hktl_mimikatz_command_line.yml (id a642964e-bead-4bed-8910-1bb4d63e3b4d)
+# 바꾼 것: 없음.
+title: HackTool - Mimikatz Execution
+id: a642964e-bead-4bed-8910-1bb4d63e3b4d
+name: mimikatz_command_line
+status: test
+description: 'Detection well-known mimikatz command line arguments'
+author: 'Teymur Kheirkhabarov, oscd.community, David ANDRE (additional keywords), Tim Shelton'
+tags:
+  - attack.credential-access
+  - attack.t1003.001
+  - attack.t1003.002
+  - attack.t1003.004
+  - attack.t1003.005
+  - attack.t1003.006
+logsource:
+  category: process_creation
+detection:
+  selection_tools_name:
+    CommandLine|contains:
+      - 'DumpCreds'
+      - 'mimikatz'
+  selection_function_names: # To cover functions from modules that are not in module_names
+    CommandLine|contains:
+      - '::aadcookie' # misc module
+      - '::detours' # misc module
+      - '::memssp' # misc module
+      - '::mflt' # misc module
+      - '::ncroutemon' # misc module
+      - '::ngcsign' # misc module
+      - '::printnightmare' # misc module
+      - '::skeleton' # misc module
+      - '::preshutdown'  # service module
+      - '::mstsc'  # ts module
+      - '::multirdp'  # ts module
+  selection_module_names:
+    CommandLine|contains:
+      - 'rpc::'
+      - 'token::'
+      - 'crypto::'
+      - 'dpapi::'
+      - 'sekurlsa::'
+      - 'kerberos::'
+      - 'lsadump::'
+      - 'privilege::'
+      - 'process::'
+      - 'vault::'
+  condition: 1 of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: high

@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_certutil_download.yml (id 19b08b1c-861d-4e75-a1ef-ea0c1baf202b)
+# 바꾼 것: OriginalFileName 조건을 뺐다(에이전트가 보내지 않는다). MITRE 첫 태그를 t1105 로 올렸다.
+title: Suspicious Download Via Certutil.EXE
+id: 19b08b1c-861d-4e75-a1ef-ea0c1baf202b
+name: certutil_download
+status: test
+description: 'Detects the execution of certutil with certain flags that allow the utility to download files.'
+author: 'Florian Roth (Nextron Systems), Jonhnathan Ribeiro, oscd.community, Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.command-and-control
+  - attack.t1105
+  - attack.stealth
+  - attack.t1027
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\certutil.exe'
+  selection_flags:
+    CommandLine|contains:
+      - 'urlcache '
+      - 'verifyctl '
+      - 'URL '
+  selection_http:
+    CommandLine|contains: 'http'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

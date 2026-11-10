@@ -1,0 +1,51 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_base64_encoded_cmd.yml (id ca2092a1-c273-4878-9b4b-0d60115bf5ea)
+# 바꾼 것: OriginalFileName 조건을 뺐다. 에이전트가 -enc 계열 값을 <redacted> 로 가려서 보내므로 selection_redacted 를 더했다(없으면 이 룰은 -enc 로는 영영 안 걸린다).
+title: Suspicious Encoded PowerShell Command Line
+id: ca2092a1-c273-4878-9b4b-0d60115bf5ea
+name: powershell_encoded_command
+status: test
+description: 'Detects suspicious powershell process starts with base64 encoded commands (e.g. Emotet)'
+author: 'Florian Roth (Nextron Systems), Markus Neis, Jonhnathan Ribeiro, Daniil Yugoslavskiy, Anton Kutepov, oscd.community'
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_cli_enc:
+    CommandLine|contains: ' -e' # covers -en and -enc
+  selection_cli_content:
+    CommandLine|contains:
+      - ' JAB'
+      - ' SUVYI'
+      - ' SQBFAFgA'
+      - ' aQBlAHgA'
+      - ' aWV4I'
+      - ' IAA'
+      - ' IAB'
+      - ' UwB'
+      - ' cwB'
+  # 에이전트는 -enc, -encoded, -encodedcommand 뒤의 값을 자격증명 보호로 <redacted> 로 바꿔 보낸다.
+  # 그 값은 위 base64 패턴으로 볼 수 없어서, 가려진 표시 자체를 인코딩 실행의 증거로 본다.
+  selection_redacted:
+    CommandLine|contains:
+      - ' -enc <redacted>'
+      - ' -encoded <redacted>'
+      - ' -encodedcommand <redacted>'
+      - ' /enc <redacted>'
+      - ' /encoded <redacted>'
+      - ' /encodedcommand <redacted>'
+  selection_standalone:
+    CommandLine|contains:
+      - '.exe -ENCOD '
+      - ' BA^J e-' # Reversed
+  filter_optional_remote_signed:
+    CommandLine|contains: ' -ExecutionPolicy remotesigned '
+  condition: selection_img and (all of selection_cli_* or selection_redacted or selection_standalone) and not 1 of filter_optional_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: medium

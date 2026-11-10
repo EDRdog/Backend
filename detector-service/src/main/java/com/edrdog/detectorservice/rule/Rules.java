@@ -51,30 +51,44 @@ public final class Rules {
     private static final Set<String> WEAK_TLS_VERSIONS = Set.of(
             "ssl 3.0", "tls 1.0", "tls 1.1");
 
-    /** 현재 이벤트가 선행 버퍼와 상관되어 룰을 완성하면 Alert 반환. 여러 룰 매칭 시 가장 심각한 것 채택. */
+    /** 코드 룰(R1~R5)만 돈다. 데이터 룰까지 보려면 3인자 evaluate 를 쓴다. */
     public static Optional<Alert> evaluate(List<Event> prior, Event current) {
+        return evaluate(prior, current, List.of());
+    }
+
+    /**
+     * 현재 이벤트가 선행 버퍼와 상관되어 룰을 완성하면 Alert 반환. 여러 룰 매칭 시 가장 심각한 것 채택.
+     *
+     * <p>후보를 모으는 순서가 동률일 때의 우선순위다: R2, R1, R3~R5, 데이터 룰(파일 순).
+     * 심각도가 같으면 앞선 것이 이기므로 R2(CRITICAL)는 어떤 데이터 룰에도 가려지지 않는다.
+     * 데이터 룰은 이벤트 하나만 보는 point 룰이라 isSequenceTrigger/isCorrelatable 에는 관여하지 않는다.
+     */
+    public static Optional<Alert> evaluate(List<Event> prior, Event current, List<SigmaRule> dataRules) {
         if (current == null || current.getHost().isEmpty()) {
             return Optional.empty();
         }
-        // 시도 순서가 곧 우선순위다. 순서를 바꾸면 CRITICAL 이 될 이벤트가 낮은 심각도로 덮인다.
-        Optional<Alert> r2 = downloadAndExecute(prior, current);
-        if (r2.isPresent()) {
-            return r2;
-        }
-        Optional<Alert> r1 = suspiciousProcessChain(prior, current);
-        if (r1.isPresent()) {
-            return r1;
-        }
+        List<Alert> hits = new ArrayList<>();
+        downloadAndExecute(prior, current).ifPresent(hits::add);
+        suspiciousProcessChain(prior, current).ifPresent(hits::add);
         // 저심각 단일-이벤트(point) 룰 — 시퀀스 상관 없이 현재 이벤트만으로 판정
-        Optional<Alert> r3 = scriptFromTempPath(current);
-        if (r3.isPresent()) {
-            return r3;
+        scriptFromTempPath(current).ifPresent(hits::add);
+        fileInAutorunPath(current).ifPresent(hits::add);
+        weakTlsHandshake(current).ifPresent(hits::add);
+        for (SigmaRule rule : dataRules) {
+            if (rule.matches(current)) {
+                hits.add(alertOf(rule.ruleId(), rule.mitre(), rule.severity(), current, List.of()));
+            }
         }
-        Optional<Alert> r4 = fileInAutorunPath(current);
-        if (r4.isPresent()) {
-            return r4;
-        }
-        return weakTlsHandshake(current);
+        // 같은 심각도면 앞선 후보를 남긴다(> 만 쓴다).
+        return hits.stream().reduce((best, a) -> rank(a.severity()) > rank(best.severity()) ? a : best);
+    }
+
+    private static int rank(String severity) {
+        return switch (severity) {
+            case Alert.SEV_CRITICAL -> 2;
+            case Alert.SEV_HIGH -> 1;
+            default -> 0;
+        };
     }
 
     /**
@@ -227,6 +241,10 @@ public final class Rules {
 
     private static boolean isFile(Event e) {
         return EventTypes.FILE.equals(e.getType());
+    }
+
+    private static boolean isDns(Event e) {
+        return EventTypes.DNS.equals(e.getType());
     }
 
     private static boolean isL7(Event e) {
@@ -423,6 +441,10 @@ public final class Rules {
         }
         if (isFile(e)) {
             return "file " + e.getCmdline();
+        }
+        if (isDns(e)) {
+            // 여기 없으면 dns 가 아래 process 형식으로 굳어 api-service 가 엉뚱한 프로세스 이벤트를 원본으로 짚는다.
+            return "dns " + e.getDomain();
         }
         if (isL7(e)) {
             // 여기 없으면 l7 이 아래 process 형식으로 굳어 api-service 가 원본 이벤트를 못 찾는다.

@@ -57,7 +57,7 @@ class DemoCollectContractTest {
     void setUp() {
         StreamsBuilder builder = new StreamsBuilder();
         DetectionTopology.build(builder, EVENTS, ALERTS, DetectionTopology.WINDOW_MS,
-                DetectionTopology.GRACE_MS, new SimpleMeterRegistry());
+                DetectionTopology.GRACE_MS, new SimpleMeterRegistry(), List::of);
 
         Properties props = new Properties();
         props.put("application.id", "detector-demo-contract");

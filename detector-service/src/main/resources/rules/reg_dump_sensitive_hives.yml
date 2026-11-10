@@ -1,0 +1,36 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_reg_dumping_sensitive_hives.yml (id fd877b94-9bb5-4191-bb25-d79cbd93c167)
+# 바꾼 것: OriginalFileName 조건과 유니코드 변형 문자열(ˢave 등)을 뺐다.
+title: Dumping of Sensitive Hives Via Reg.EXE
+id: fd877b94-9bb5-4191-bb25-d79cbd93c167
+name: reg_dump_sensitive_hives
+status: test
+description: 'Detects the usage of "reg.exe" in order to dump sensitive registry hives. This includes SAM, SYSTEM and SECURITY hives.'
+author: 'Teymur Kheirkhabarov, Endgame, JHasenbusch, Daniil Yugoslavskiy, oscd.community, frack113'
+tags:
+  - attack.credential-access
+  - attack.t1003.002
+  - attack.t1003.004
+  - attack.t1003.005
+  - car.2013-07-001
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\reg.exe'
+  selection_cli_flag:
+    CommandLine|contains:
+      - ' save '
+      - ' export '
+  selection_cli_hklm:
+    CommandLine|contains:
+      - 'hklm'
+      - 'hkey_local_machine'
+  selection_cli_hive:
+    CommandLine|contains:
+      - '\system'
+      - '\sam'
+      - '\security'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
+level: high

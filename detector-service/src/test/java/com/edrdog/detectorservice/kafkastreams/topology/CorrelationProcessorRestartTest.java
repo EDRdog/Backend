@@ -61,7 +61,7 @@ class CorrelationProcessorRestartTest {
 
     /** 새 프로세서를 붙인다. 재시작하면 실제로 이 일이 일어난다. */
     private CorrelationProcessor startProcessor() {
-        CorrelationProcessor processor = new CorrelationProcessor(WINDOW_MS, GRACE_MS, new SimpleMeterRegistry());
+        CorrelationProcessor processor = new CorrelationProcessor(WINDOW_MS, GRACE_MS, new SimpleMeterRegistry(), List::of);
         processor.init(ctx);
         return processor;
     }

@@ -1,5 +1,6 @@
 package com.edrdog.detectorservice.kafkastreams.topology;
 
+import com.edrdog.detectorservice.rule.DataRules;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,7 @@ class DetectionTopologyWiringTest {
                     CompositeMeterRegistryAutoConfiguration.class,
                     SimpleMetricsExportAutoConfiguration.class))
             .withBean(StreamsBuilder.class)
-            .withUserConfiguration(DetectionTopology.class)
+            .withUserConfiguration(DetectionTopology.class, DataRules.class)
             .withPropertyValues(
                     "edrdog.kafka.events-topic=events",
                     "edrdog.kafka.alerts-topic=alerts");

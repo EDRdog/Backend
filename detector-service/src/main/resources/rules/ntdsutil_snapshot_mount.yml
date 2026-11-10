@@ -1,0 +1,30 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_ntdsutil_susp_usage.yml (id a58353df-af43-4753-bad0-cd83ef35eef5)
+# 바꾼 것: OriginalFileName 조건을 뺐다.
+title: Suspicious Usage Of Active Directory Diagnostic Tool (ntdsutil.exe)
+id: a58353df-af43-4753-bad0-cd83ef35eef5
+name: ntdsutil_snapshot_mount
+status: test
+description: 'Detects execution of ntdsutil.exe to perform different actions such as restoring snapshots...etc.'
+author: 'Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.credential-access
+  - attack.t1003.003
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\ntdsutil.exe'
+  selection_cli:
+    - CommandLine|contains|all:
+        - 'snapshot'
+        - 'mount ' # mounts a specific snapshot
+    - CommandLine|contains|all:
+        # The shortest form of "activate" can be "ac". But "act", "acti"...etc are also valid forms
+        # Same case with the "instance" flag
+        - 'ac'
+        - ' i'
+        - ' ntds'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium

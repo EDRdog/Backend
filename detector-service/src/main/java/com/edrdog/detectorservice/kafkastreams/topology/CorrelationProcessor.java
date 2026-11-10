@@ -3,6 +3,7 @@ package com.edrdog.detectorservice.kafkastreams.topology;
 import com.edrdog.detectorservice.dto.Alert;
 import com.edrdog.schema.Event;
 import com.edrdog.detectorservice.rule.Rules;
+import com.edrdog.detectorservice.rule.SigmaRule;
 import com.edrdog.schema.KafkaTraceLink;
 import com.edrdog.schema.TraceAttribute;
 import io.micrometer.core.instrument.DistributionSummary;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * host(key) 별 이벤트 버퍼를 유지하며 시퀀스 상관분석을 수행.
@@ -44,6 +46,8 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
     private final long windowMs;
     private final long graceMs;
     private final MeterRegistry metrics;
+    /** 판정 때마다 부른다. 룰 파일 리로드가 바꿔 끼운 최신 불변 스냅샷을 받을 뿐이라 스트림 스레드를 막지 않는다. */
+    private final Supplier<List<SigmaRule>> dataRules;
     private final DistributionSummary lateness;
     private final Timer kafkaLag;
 
@@ -60,10 +64,11 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
      */
     private final Map<String, Long> pendingHosts = new LinkedHashMap<>();
 
-    public CorrelationProcessor(long windowMs, long graceMs, MeterRegistry metrics) {
+    public CorrelationProcessor(long windowMs, long graceMs, MeterRegistry metrics, Supplier<List<SigmaRule>> dataRules) {
         this.windowMs = windowMs;
         this.graceMs = graceMs;
         this.metrics = metrics;
+        this.dataRules = dataRules;
         this.kafkaLag = Timer.builder("events.kafka.lag")
                 .description("events 발행에서 소비까지의 대기 — 컨슈머 랙이 늘 때 가장 먼저 커지는 값")
                 .publishPercentiles(0.5, 0.95, 0.99)
@@ -144,7 +149,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
             }
         } else {
             // 점 룰은 선행 근거가 필요 없다. 기다리면 대응만 늦어진다
-            Rules.evaluate(List.of(), current).ifPresent(alert -> forward(host, alert));
+            Rules.evaluate(List.of(), current, dataRules.get()).ifPresent(alert -> forward(host, alert));
         }
 
         // 전부 담으면 상한(EventBuffer.MAX)이 금방 차서 5분 윈도우가 십여 초로 줄어든다.
@@ -165,7 +170,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
     }
 
     private void evaluate(String host, EventBuffer buffer, Event trigger) {
-        Rules.evaluate(priorOf(buffer, trigger), trigger).ifPresent(alert -> forward(host, alert));
+        Rules.evaluate(priorOf(buffer, trigger), trigger, dataRules.get()).ifPresent(alert -> forward(host, alert));
     }
 
     /** 트리거 이전 윈도우 안의 선행 이벤트만 정렬된 채로 넘긴다 (Rules 의 prior 계약). */

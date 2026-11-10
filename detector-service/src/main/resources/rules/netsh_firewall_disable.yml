@@ -1,0 +1,35 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_netsh_fw_disable.yml (id 57c4bf16-227f-4394-8ec7-1b745ee061c3)
+# 바꾼 것: OriginalFileName 조건을 뺐다.
+title: Firewall Disabled via Netsh.EXE
+id: 57c4bf16-227f-4394-8ec7-1b745ee061c3
+name: netsh_firewall_disable
+status: test
+description: 'Detects netsh commands that turns off the Windows firewall'
+author: 'Fatih Sirin'
+tags:
+  - attack.defense-impairment
+  - attack.t1686.003
+  - attack.s0108
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\netsh.exe'
+  selection_cli_1:
+    # Example: netsh firewall set opmode disable
+    CommandLine|contains|all:
+      - 'firewall'
+      - 'set'
+      - 'opmode'
+      - 'disable'
+  selection_cli_2:
+    # Example: netsh advfirewall set currentprofile state off
+    CommandLine|contains|all:
+      - 'advfirewall'
+      - 'set'
+      - 'state'
+      - 'off'
+  condition: selection_img and 1 of selection_cli_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+level: medium
