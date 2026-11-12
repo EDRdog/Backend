@@ -1,0 +1,51 @@
+# EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러(Atomic Stealer 계열)가 메모 DB 와 암호화폐 지갑 데이터를 /tmp 로 복사하는 명령.
+# 에이전트는 파일 읽기 이벤트를 못 보므로 명령행으로 판정한다(agent/README.md: eslogger exec/create/rename/unlink 만).
+# 근거: Red Canary 2026-03 보고서의 스틸러 명령행 차단 문자열(notestore.sqlite), ART T1005 #3(osascript 로 NoteStore.sqlite 복사),
+#       Red Canary 의 MacSync 글(수집 뒤 /tmp 에 모아 압축)과 ART T1560.001 #13 설명의 CyberProof AMOS 분석(키체인, 브라우저, 지갑을 /tmp 에 모음).
+# 지갑 경로(exodus.wallet, electrum/wallets, coinomi/wallets)는 이 저장소에서 원문을 직접 확인하지 못한 공개 AMOS 계열 설명에서 따왔다.
+title: Notes Database Or Wallet Data Copied By Command Line Tool
+id: 42937100-5703-4649-bbef-025f7cc90d61
+name: macos_infostealer_local_data
+status: test
+description: Detects a copy or archive tool or osascript whose command line names the Apple Notes database, or a crypto wallet directory together with a /tmp destination, as macOS infostealers do when staging local data
+references:
+  - https://redcanary.com/threat-detection-report/trends/mac-malware/
+  - https://www.huntress.com/blog/fake-claude-macsync
+  - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1005/T1005.md
+author: EDRdog
+date: 2026-11-12
+tags:
+  - attack.collection
+  - attack.t1005
+logsource:
+  category: process_creation
+detection:
+  selection_tool:
+    Image|endswith:
+      - '/cp'
+      - '/ditto'
+      - '/cat'
+      - '/sqlite3'
+      - '/grep'
+      - '/zip'
+      - '/tar'
+      - '/rsync'
+      - '/osascript'
+  selection_notes:
+    CommandLine|contains: 'notestore.sqlite'
+  selection_wallet:
+    CommandLine|contains:
+      - 'exodus.wallet'
+      - '/electrum/wallets'
+      - '/coinomi/wallets'
+  # 목적지가 /tmp 또는 /private/tmp 인 것만 본다(/var/tmp, /Users/a/tmp 는 제외). AppleScript 는 경로를 따옴표로 감싼다.
+  selection_tmp:
+    CommandLine|contains:
+      - ' /tmp'
+      - '"/tmp'
+      - '/private/tmp'
+  condition: selection_tool and (selection_notes or (selection_wallet and selection_tmp))
+falsepositives:
+  - Notes export or backup scripts that copy NoteStore.sqlite
+  - Wallet backup scripts that copy a wallet directory to /tmp
+level: medium

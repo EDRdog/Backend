@@ -1,0 +1,47 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_office_susp_child_processes.yml (id 69483748-1525-4a6c-95ca-90dc8d431b68)
+# 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). ParentImage 는 에이전트가 파일명만 보내므로
+#          'Microsoft Word' 같은 앱 이름이 그 파일명이다. 조건과 level 은 그대로다.
+title: Suspicious Microsoft Office Child Process - MacOS
+id: 69483748-1525-4a6c-95ca-90dc8d431b68
+name: macos_office_susp_child_processes
+status: test
+description: Detects suspicious child processes spawning from microsoft office suite applications such as word or excel. This could indicates malicious macro execution
+references:
+  - https://redcanary.com/blog/applescript/
+  - https://objective-see.org/blog/blog_0x4B.html
+author: Sohan G (D4rkCiph3r)
+date: 2023-01-31
+modified: 2023-02-04
+tags:
+  - attack.execution
+  - attack.persistence
+  - attack.t1059.002
+  - attack.t1137.002
+  - attack.t1204.002
+logsource:
+  category: process_creation
+detection:
+  selection:
+    ParentImage|contains:
+      - 'Microsoft Word'
+      - 'Microsoft Excel'
+      - 'Microsoft PowerPoint'
+      - 'Microsoft OneNote'
+    Image|endswith:
+      - '/bash'
+      - '/curl'
+      - '/dash'
+      - '/fish'
+      - '/osacompile'
+      - '/osascript'
+      - '/sh'
+      - '/zsh'
+      - '/python'
+      - '/python3'
+      - '/wget'
+  condition: selection
+falsepositives:
+  - Unknown
+# SigmaHQ 원본은 high. 개발 도구와 겹쳐 알림만 낸다(kill 권고는 명백히 악성인 룰만)
+level: medium

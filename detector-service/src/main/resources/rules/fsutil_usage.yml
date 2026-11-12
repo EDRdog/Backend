@@ -1,0 +1,33 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_fsutil_usage.yml (id add64136-62e5-48ea-807e-88638d02df1e)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1070 #1(usn deletejournal), #2(file setZeroData)에 걸린다.
+# 감수한 오탐: 관리자의 USN 저널 조정, 파일 0 채우기도 걸린다. 알림만 보내는 medium 이라 둔다.
+title: Fsutil Suspicious Invocation
+id: add64136-62e5-48ea-807e-88638d02df1e
+name: fsutil_usage
+status: stable
+description: 'Detects suspicious parameters of fsutil (deleting USN journal, configuring it with small size, etc). Might be used by ransomwares during the attack (seen by NotPetya and others).'
+references:
+  - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-usn
+  - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1070/T1070.md
+  - https://eqllib.readthedocs.io/en/latest/analytics/c91f422a-5214-4b17-8664-c5fcf115c0a2.html
+  - https://github.com/albertzsigovits/malware-notes/blob/558898932c1579ff589290092a2c8febefc3a4c9/Ransomware/Lockbit.md
+author: 'Ecco, E.M. Anhaus, oscd.community'
+tags:
+  - attack.impact
+  - attack.stealth
+  - attack.t1070
+  - attack.t1485
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\fsutil.exe'
+  selection_cli:
+    CommandLine|contains:
+      - 'deletejournal'
+      - 'createjournal'
+      - 'setZeroData'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

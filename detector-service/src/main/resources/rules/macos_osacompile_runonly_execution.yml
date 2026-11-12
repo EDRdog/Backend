@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_osacompile_runonly_execution.yml (id b9d9b652-d8ed-4697-89a2-a1186ee680ac)
+# 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). 조건과 level 은 그대로다.
+title: OSACompile Run-Only Execution
+id: b9d9b652-d8ed-4697-89a2-a1186ee680ac
+name: macos_osacompile_runonly_execution
+status: test
+description: Detects potential suspicious run-only executions compiled using OSACompile
+references:
+  - https://redcanary.com/blog/applescript/
+  - https://ss64.com/osx/osacompile.html
+author: Sohan G (D4rkCiph3r)
+date: 2023-01-31
+tags:
+  - attack.t1059.002
+  - attack.execution
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains|all:
+      - 'osacompile'
+      - ' -x '
+      - ' -e '
+  condition: selection
+falsepositives:
+  - Unknown
+# SigmaHQ 원본은 high. kill 권고는 ADR 020 의 다섯 개만 두므로 알림만 낸다
+level: medium

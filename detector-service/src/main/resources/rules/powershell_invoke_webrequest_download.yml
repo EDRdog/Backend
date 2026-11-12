@@ -1,0 +1,45 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_invoke_webrequest_download.yml (id 5e3cc4d8-3e68-43db-8656-eaaeefdec9cc)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ':\Windows\' 값도 뺐다(에이전트가 보내는 명령행 첫 토큰이 C:\Windows\System32\...\powershell.exe 라서 이 값이 모든 powershell 에 걸린다). ART T1105 #29 의 iwr -Outfile %temp% 에 걸린다.
+title: Suspicious Invoke-WebRequest Execution
+id: 5e3cc4d8-3e68-43db-8656-eaaeefdec9cc
+name: powershell_invoke_webrequest_download
+status: test
+description: 'Detects a suspicious call to Invoke-WebRequest cmdlet where the and output is located in a suspicious location'
+references:
+  - https://www.sentinelone.com/blog/living-off-windows-defender-lockbit-ransomware-sideloads-cobalt-strike-through-microsoft-security-tool/
+author: 'Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.command-and-control
+  - attack.t1105
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith:
+      - '\powershell_ise.exe'
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_commands:
+    CommandLine|contains:
+      - 'curl '
+      - 'Invoke-WebRequest'
+      - 'iwr '
+      - 'wget '
+  selection_flags:
+    CommandLine|contains:
+      - ' -ur'
+      - ' -o'
+  selection_susp_locations:
+    CommandLine|contains:
+      - '\AppData\'
+      - '\Desktop\'
+      - '\Temp\'
+      - '\Users\Public\'
+      - '%AppData%'
+      - '%Public%'
+      - '%Temp%'
+      - '%tmp%'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

@@ -1,0 +1,36 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_reg_bitlocker.yml (id 0e0255bf-2548-47b8-9582-c0955c9283f5)
+# 바꾼 것: 없다(원본 조건 그대로). 걸리는 ART 시험은 T1112 아래 BitLocker 레지스트리 시험(예: EnableBDEWithNoTPM)이다. ART T1486 에는 이 명령을 쓰는 시험이 없다.
+title: Suspicious Reg Add BitLocker
+id: 0e0255bf-2548-47b8-9582-c0955c9283f5
+name: reg_bitlocker_policy
+status: test
+description: 'Detects suspicious addition to BitLocker related registry keys via the reg.exe utility'
+references:
+  - https://thedfirreport.com/2021/11/15/exchange-exploit-leads-to-domain-wide-ransomware/
+author: 'frack113'
+tags:
+  - attack.impact
+  - attack.t1486
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains|all:
+      - 'REG'
+      - 'ADD'
+      - '\SOFTWARE\Policies\Microsoft\FVE'
+      - '/v'
+      - '/f'
+    CommandLine|contains:
+      - 'EnableBDEWithNoTPM'
+      - 'UseAdvancedStartup'
+      - 'UseTPM'
+      - 'UseTPMKey'
+      - 'UseTPMKeyPIN'
+      - 'RecoveryKeyMessageSource'
+      - 'UseTPMPIN'
+      - 'RecoveryKeyMessage'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

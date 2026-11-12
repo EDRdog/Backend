@@ -1,0 +1,24 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_finger_execution.yml (id af491bca-e752-4b44-9c86-df5680533dbc)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1105 #16 에 걸린다. finger.exe 는 요즘 정상 사용이 거의 없어 실행 자체를 본다.
+title: Finger.EXE Execution
+id: af491bca-e752-4b44-9c86-df5680533dbc
+name: finger_execution
+status: test
+description: 'Detects execution of the finger.exe utility. Any execution of finger.exe can be considered suspicious and worth investigating, given the rareness of machines having the finger service.'
+references:
+  - https://twitter.com/bigmacjpg/status/1349727699863011328?s=12
+  - https://app.any.run/tasks/40115012-a919-4208-bfed-41e82cb3dadf/
+  - http://hyp3rlinx.altervista.org/advisories/Windows_TCPIP_Finger_Command_C2_Channel_and_Bypassing_Security_Software.txt
+author: 'Florian Roth (Nextron Systems), omkar72, oscd.community'
+tags:
+  - attack.command-and-control
+  - attack.t1105
+logsource:
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: '\finger.exe'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium
