@@ -1,0 +1,27 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_mpcmdrun_remove_windows_defender_definition.yml (id 9719a8aa-401c-41af-8108-ced7ec9cd75c)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #23 에 걸린다.
+title: Windows Defender Definition Files Removed
+id: 9719a8aa-401c-41af-8108-ced7ec9cd75c
+name: mpcmdrun_remove_definitions
+status: test
+description: 'Adversaries may disable security tools to avoid possible detection of their tools and activities by removing Windows Defender Definition Files'
+references:
+  - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1562.001/T1562.001.md
+  - https://unit42.paloaltonetworks.com/unit42-gorgon-group-slithering-nation-state-cybercrime/
+author: 'frack113'
+tags:
+  - attack.defense-impairment
+  - attack.t1685
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\MpCmdRun.exe'
+  selection_cli:
+    CommandLine|contains|all:
+      - ' -RemoveDefinitions'
+      - ' -All'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

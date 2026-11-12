@@ -1,0 +1,72 @@
+# EDRdog 자체 룰이다. SigmaHQ 에는 대응하는 룰이 없다(ClickFix 전용 룰이 없고, Windows 로 옮길 수 있게 준비된 룰도 없었다).
+# 근거: Microsoft 보안 블로그(2025-08-21)가 설명한 ClickFix 흐름. 사용자가 실행 대화상자(Win+R)에 붙여넣은 명령을 explorer.exe 가 실행하고,
+# 자식 프로세스는 숨김 창 PowerShell(-w hidden), iex, iwr, irm, DownloadString, mshta, curl 로 원격 페이로드를 받아 실행한다.
+# ART T1204.004 #1 은 수동 시험이다. 붙여넣는 명령은 iex ((New-Object System.Net.WebClient).DownloadString('https://...')) 이다.
+# 숨김 창만으로는 걸지 않는다. 바로가기(.lnk)로 띄우는 정상 PowerShell 도 explorer.exe 가 부모라서, 숨김 창은 -c, -command, -enc 인라인 실행과 함께일 때만 본다.
+# 한계: 부모가 explorer.exe 가 아닌 경로(Windows Terminal 에 붙여넣기)는 보지 못한다. Win+R, 탐색기 주소창 변형은 본다.
+title: Potential ClickFix Paste-and-Run Shell From Explorer
+id: daa6856a-25d6-4a83-b5a4-9c9b86557feb
+name: clickfix_run_dialog_shell
+status: experimental
+description: 'Detects explorer.exe launching powershell, mshta or cmd with a download-and-execute command line or an inline hidden-window command, the process chain of ClickFix copy-and-paste social engineering'
+references:
+  - https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/
+  - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1204.004/T1204.004.md
+author: 'EDRdog'
+tags:
+  - attack.execution
+  - attack.t1204.004
+logsource:
+  category: process_creation
+detection:
+  selection_parent:
+    ParentImage|endswith: '\explorer.exe'
+  selection_ps_img:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_ps_download:
+    CommandLine|contains:
+      - 'invoke-expression'
+      - ' iex '
+      - ' iex('
+      - '(iex '
+      - '|iex'
+      - 'downloadstring'
+      - 'downloadfile'
+      - 'invoke-webrequest'
+      - ' iwr '
+      - '(iwr '
+      - ' irm '
+      - '(irm '
+      - 'invoke-restmethod'
+      - 'net.webclient'
+      - 'start-bitstransfer'
+  selection_ps_hidden:
+    CommandLine|contains:
+      - ' -w hidden'
+      - ' -windowstyle hidden'
+      - ' -w h '
+  selection_ps_inline:
+    CommandLine|contains:
+      - ' -c '
+      - ' -command '
+      - ' -enc'
+  selection_mshta:
+    Image|endswith: '\mshta.exe'
+    CommandLine|contains: 'http'
+  selection_cmd_img:
+    Image|endswith: '\cmd.exe'
+  selection_cmd_url:
+    CommandLine|contains: 'http'
+  selection_cmd_tool:
+    CommandLine|contains:
+      - 'powershell'
+      - 'pwsh'
+      - 'mshta'
+      - 'curl '
+      - 'bitsadmin'
+      - 'certutil'
+  condition: selection_parent and ((selection_ps_img and (selection_ps_download or (selection_ps_hidden and selection_ps_inline))) or selection_mshta or all of selection_cmd_*)
+# 알림만 보낸다. 사용자가 직접 붙여넣어 실행한 명령이라 정상 사용(개발자가 설치 한 줄 명령을 실행 대화상자에 붙여넣기)과 겹칠 수 있다.
+level: medium

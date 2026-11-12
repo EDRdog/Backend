@@ -1,0 +1,30 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_mpcmdrun_download_arbitrary_file.yml (id 46123129-1024-423e-9fae-43af4a0fa9a5)
+# 바꾼 것: OriginalFileName, Description 가지를 뺐다. MITRE 첫 태그를 t1105 로 올렸다. ART T1105 #13 에 걸린다.
+title: File Download Via Windows Defender MpCmpRun.EXE
+id: 46123129-1024-423e-9fae-43af4a0fa9a5
+name: mpcmdrun_download_arbitrary_file
+status: test
+description: 'Detects the use of Windows Defender MpCmdRun.EXE to download files'
+references:
+  - https://web.archive.org/web/20200903194959/https://twitter.com/djmtshepana/status/1301608169496612866
+  - https://lolbas-project.github.io/lolbas/Binaries/MpCmdRun/
+author: 'Matthew Matchen'
+tags:
+  - attack.command-and-control
+  - attack.t1105
+  - attack.stealth
+  - attack.t1218
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    - Image|endswith: '\MpCmdRun.exe'
+    - CommandLine|contains: 'MpCmdRun.exe'
+  selection_cli:
+    CommandLine|contains|all:
+      - 'DownloadFile'
+      - 'url'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

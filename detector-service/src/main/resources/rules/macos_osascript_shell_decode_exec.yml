@@ -1,0 +1,36 @@
+# EDRdog 자체 룰이다. SigmaHQ 의 macOS AppleScript 룰(proc_creation_macos_applescript, osascript -e)은 평소 사용에도 걸려
+# 넣지 않았고, 그중 셸 명령을 띄워 해독하거나 인터프리터로 넘겨 실행하는 모양만 잡는다.
+# 근거: ART T1059.002 #1(osascript 의 do shell script 로 base64 페이로드를 python 에 넘김),
+#       Red Canary AppleScript 글(osascript 가 셸을 거쳐 페이로드를 실행), 2026-11-12 Atomic Red Team 1차 시험 A01 미탐.
+title: Osascript Shell Command Decoding Or Piping A Payload
+id: 7c1e5d2a-4b8f-4e0a-9d3c-2f6a8b1e4c07
+name: macos_osascript_shell_decode_exec
+status: test
+description: Detects osascript running "do shell script" whose command decodes base64 or pipes into an interpreter, a pattern used to launch payloads from AppleScript
+references:
+  - https://redcanary.com/blog/applescript/
+  - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1059.002/T1059.002.md
+author: EDRdog
+date: 2026-11-12
+tags:
+  - attack.execution
+  - attack.t1059.002
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '/osascript'
+  selection_shell:
+    CommandLine|contains: 'do shell script'
+  selection_payload:
+    CommandLine|contains:
+      - 'base64'
+      - 'b64decode'
+      - '| python'
+      - '| sh'
+      - '| bash'
+      - '| zsh'
+  condition: selection_img and selection_shell and selection_payload
+falsepositives:
+  - Admin AppleScripts that decode base64 configuration with do shell script
+level: medium

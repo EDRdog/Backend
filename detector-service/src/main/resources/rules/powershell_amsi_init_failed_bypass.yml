@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_amsi_init_failed_bypass.yml (id 30edb182-aa75-42c0-b0a9-e998bb29067c)
+# 바꾼 것: 없다(원본 조건 그대로). ART T1685 #16 에 걸린다.
+title: Potential AMSI Bypass Via .NET Reflection
+id: 30edb182-aa75-42c0-b0a9-e998bb29067c
+name: powershell_amsi_init_failed_bypass
+status: test
+description: 'Detects Request to "amsiInitFailed" that can be used to disable AMSI Scanning'
+references:
+  - https://s3cur3th1ssh1t.github.io/Bypass_AMSI_by_manual_modification/
+  - https://www.mdsec.co.uk/2018/06/exploring-powershell-amsi-and-logging-evasion/
+author: 'Markus Neis, @Kostastsale'
+tags:
+  - attack.defense-impairment
+  - attack.t1685
+logsource:
+  category: process_creation
+detection:
+  selection:
+    - CommandLine|contains|all:
+        - 'System.Management.Automation.AmsiUtils'
+        - 'amsiInitFailed'
+    - CommandLine|contains|all:
+        - '[Ref].Assembly.GetType'
+        - 'SetValue($null,$true)'
+        - 'NonPublic,Static'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_susp_download_patterns.yml (id e6c54d94-498c-4562-a37c-b469d8e9a275)
+# 바꾼 것: 없다(원본 조건 그대로). ART T1059.001 #3, #5 의 IEX 다운로드 크래들에 걸린다.
+title: Suspicious PowerShell Download and Execute Pattern
+id: e6c54d94-498c-4562-a37c-b469d8e9a275
+name: powershell_susp_download_patterns
+status: test
+description: 'Detects suspicious PowerShell download patterns that are often used in malicious scripts, stagers or downloaders.'
+references:
+  - https://gist.github.com/jivoi/c354eaaf3019352ce32522f916c03d70
+  - https://www.trendmicro.com/en_us/research/22/j/lv-ransomware-exploits-proxyshell-in-attack.html
+author: 'Florian Roth (Nextron Systems)'
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - 'IEX ((New-Object Net.WebClient).DownloadString'
+      - 'IEX (New-Object Net.WebClient).DownloadString'
+      - 'IEX((New-Object Net.WebClient).DownloadString'
+      - 'IEX(New-Object Net.WebClient).DownloadString'
+      - ' -command (New-Object System.Net.WebClient).DownloadFile('
+      - ' -c (New-Object System.Net.WebClient).DownloadFile('
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium
