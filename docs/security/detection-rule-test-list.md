@@ -274,7 +274,7 @@ MITRE ATT&CK Evaluations 의 탐지 분류를 줄여 쓴다. 시험마다 하나
 > **KISA EDR 평가 항목(수집·탐지·대응) 기준 자체 시험**
 > Atomic Red Team(Red Canary 공개 공격 재현 도구) 시험 **n / m 탐지**
 
-출처 표기(작게): 시험 기법은 Red Canary·Unit 42·CrowdStrike·Mandiant·Picus 등 위협 보고서 공통 상위 기법. 시험 목록은 룰 작성 전에 고정. 실행 환경 macOS 단말 1대(Windows 는 룰 단위 테스트만).
+출처 표기(작게): 시험 기법은 Red Canary·Unit 42·CrowdStrike·Mandiant·Picus 등 위협 보고서 공통 상위 기법. 시험 목록은 룰 작성 전에 고정.
 
 탐지 시간과 오탐 수는 포스터에서 뺀다. 결과 문서에는 남겨 질문이 오면 답한다.
 
