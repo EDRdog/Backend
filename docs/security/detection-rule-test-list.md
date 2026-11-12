@@ -214,7 +214,7 @@ SigmaHQ 7개: Credentials In Files(high, 빈도 5), AppleScript 실행, 의심 �
 
 ## 5-3. 실제로 넣은 룰 (2026-11-12)
 
-새 룰 28개(Windows 21, macOS 7). 번들 룰은 28개에서 56개가 됐다. 룰마다 Atomic Red Team 시험 명령(없으면 공개 보고서의 명령)에 걸리는 단위 테스트와, 같은 실행 파일의 정상 사용에 안 걸리는 단위 테스트를 붙였다(요구사항 DET-28, DET-29).
+새 룰 31개(Windows 21, macOS 10). 번들 룰은 28개에서 59개가 됐다. macOS 3개(`MACOS_OSASCRIPT_SHELL_DECODE_EXEC`, `MACOS_KEYCHAIN_FILE_COPY`, `MACOS_CHROMIUM_HEADLESS_DEBUGGING`)는 1차 Atomic Red Team 시험(`art-test-2026-11-12/`)에서 놓친 A01, A03, A04 를 원인 분석한 뒤 더했다. 룰마다 Atomic Red Team 시험 명령(없으면 공개 보고서의 명령)에 걸리는 단위 테스트와, 같은 실행 파일의 정상 사용에 안 걸리는 단위 테스트를 붙였다(요구사항 DET-28, DET-29).
 
 | OS | 기법 | 룰 |
 |---|---|---|

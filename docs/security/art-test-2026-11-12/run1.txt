@@ -1,0 +1,32 @@
+결과 파일: /Users/dhkim/1Project/EDRdog/Backend-artrules/dettest-20261112T081900Z.md
+[A01] 시작 08:19:01
+[A01] 수집=O 알림=- 응답=- 판정=미탐
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A02] 시작 08:23:31
+[A02] 수집=O 알림=MACOS_KEYCHAIN_DUMP 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A03] 시작 08:26:08
+[A03] 수집=O 알림=- 응답=- 판정=미탐
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A04] 시작 08:30:38
+NOTE: chocolate 이 없어 Chrome 기동 단계만 실행했다
+[A04] 수집=O 알림=- 응답=- 판정=미탐
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A05] 시작 08:35:09
+[A05] 수집=O 알림=MACOS_INFOSTEALER_COOKIE_THEFT 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A06] 시작 08:37:42
+[A06] 수집=O 알림=MACOS_INFOSTEALER_LOCAL_DATA 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A07] 시작 08:40:19
+[A07] 수집=O 알림=MACOS_INFOSTEALER_COOKIE_THEFT 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A08] 시작 08:42:52
+[A08] 수집=O 알림=MACOS_INFOSTEALER_BROWSER_CREDENTIALS 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A09] 시작 08:45:29
+[A09] 수집=O 알림=MACOS_INFOSTEALER_BROWSER_CREDENTIALS 응답=- 판정=탐지
+다음 시나리오까지 150s 대기 (5분 상관 창과 60초 쿨다운을 비운다)
+[A10] 시작 08:48:02
+[A10] 수집=O 알림=MACOS_INFOSTEALER_EXFIL_CURL_ARCHIVE 응답=- 판정=탐지
+끝. 결과: /Users/dhkim/1Project/EDRdog/Backend-artrules/dettest-20261112T081900Z.md

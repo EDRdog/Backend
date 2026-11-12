@@ -246,7 +246,23 @@ class BundledRulesTest {
                     List.of(file("C:\\Users\\a\\notes.txt"))),
             c("FILE_LSASS_DUMP_NAME", Alert.SEV_MEDIUM,
                     List.of(file("C:\\Temp\\lsass.dmp"), file("C:\\Temp\\lsass_261110_101010.dmp")),
-                    List.of(file("C:\\Temp\\report.dmp"))));
+                    List.of(file("C:\\Temp\\report.dmp"))),
+            c("MACOS_OSASCRIPT_SHELL_DECODE_EXEC", Alert.SEV_MEDIUM,
+                    List.of(proc("osascript", "/usr/bin/osascript -e do shell script \"echo \\\"import sys,base64;exec(base64.b64decode('aW1w'));\\\" | python &\""),
+                            proc("osascript", "/usr/bin/osascript -e do shell script \"echo ZWNobyBoaQ== | base64 -d | sh\"")),
+                    List.of(proc("osascript", "/usr/bin/osascript -e do shell script \"ls /Users/a\""),
+                            proc("osascript", "/usr/bin/osascript -e display notification \"base64 done\""),
+                            proc("base64", "/usr/bin/base64 -d /tmp/a.txt"))),
+            c("MACOS_KEYCHAIN_FILE_COPY", Alert.SEV_MEDIUM,
+                    List.of(proc("cat", "/bin/cat /Users/a/Library/Keychains/login.keychain-db"),
+                            proc("cp", "/bin/cp /Users/a/Library/Keychains/login.keychain-db /tmp/k")),
+                    List.of(proc("ls", "/bin/ls /Users/a/Library/Keychains/login.keychain-db"),
+                            proc("cat", "/bin/cat /Users/a/notes.txt"),
+                            proc("cp", "/bin/cp /Users/a/Library/Keychains/readme.txt /tmp/r"))),
+            c("MACOS_CHROMIUM_HEADLESS_DEBUGGING", Alert.SEV_MEDIUM,
+                    List.of(proc("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --user-data-dir=/tmp/p --remote-debugging-port=1337 --remote-allow-origins=http://localhost/ about:blank")),
+                    List.of(proc("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --user-data-dir=/tmp/p --print-to-pdf=/tmp/a.pdf https://example.com"),
+                            proc("Google Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --remote-debugging-port=9222"))));
 
     // 아래 룰의 양성은 Atomic Red Team 시험 명령(기본 입력값 대입)이다. powershell 실행자 시험은 powershell.exe -NoProfile -Command "..." 로 감쌌다.
     // ART 시험 번호는 룰 파일 맨 위 주석에 있다. 에이전트는 명령행 첫 토큰을 전체 경로로 바꿔 보낸다.
@@ -386,14 +402,14 @@ class BundledRulesTest {
     }
 
     @Test
-    @DisplayName("번들 룰은 전부 읽히고, 룰마다 테스트 케이스가 있다 (40~60개)")
+    @DisplayName("번들 룰은 전부 읽히고, 룰마다 테스트 케이스가 있다 (50~80개)")
     void everyBundledRule_isLoaded_andTested() throws IOException {
         int files = new PathMatchingResourcePatternResolver().getResources("classpath*:rules/*.yml").length;
         Set<String> tested = CASES.stream().map(Case::ruleId).collect(Collectors.toSet());
 
         assertThat(BUNDLED.current()).hasSize(files);
         assertThat(BY_ID.keySet()).isEqualTo(tested);
-        assertThat(files).isBetween(40, 60);
+        assertThat(files).isBetween(50, 80);
     }
 
     @Test
