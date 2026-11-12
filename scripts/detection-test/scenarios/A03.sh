@@ -3,7 +3,7 @@
 # attack: T1555.001
 # atomic: Atomic Red Team T1555.001 #4 (Copy Keychain using cat utility)
 # expect: detected
-# rule: NONE
+# rule: MACOS_KEYCHAIN_FILE_COPY
 # type: process
 # probe: login.keychain-db
 # 로그인 키체인 파일(암호화된 DB)을 임시 폴더로 복사한다. 사본은 소유자만 읽게 만들고 cleanup 에서 지운다.

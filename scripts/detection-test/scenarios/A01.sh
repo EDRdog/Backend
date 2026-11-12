@@ -3,7 +3,7 @@
 # attack: T1059.002
 # atomic: Atomic Red Team T1059.002 #1 (AppleScript)
 # expect: detected
-# rule: NONE
+# rule: MACOS_OSASCRIPT_SHELL_DECODE_EXEC
 # type: process
 # probe: warnings.filterwarnings
 # osascript 가 do shell script 로 base64 파이썬을 python 에 흘려 넣는다. 파이썬은 127.0.0.1:80 에만 접속을 시도한다.

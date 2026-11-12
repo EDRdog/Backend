@@ -3,7 +3,7 @@
 # attack: T1539
 # atomic: Atomic Red Team T1539 #3 (Steal Chrome Cookies via Remote Debugging (Mac))
 # expect: detected
-# rule: NONE
+# rule: MACOS_CHROMIUM_HEADLESS_DEBUGGING
 # requires: Google Chrome
 # type: process
 # probe: {MARK}
