@@ -22,7 +22,7 @@
 | DET-16 | 깨진 룰 파일은 그 파일의 이전 룰을 유지하고 나머지는 정상 반영된다 | `DataRulesTest.reload_brokenFile_keepsPreviousRule`, `DataRulesTest.unsupportedRule_isSkipped_othersLoaded` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-17 | 룰 디렉터리를 못 읽거나 비어도 룰이 통째로 꺼지지 않는다 | `DataRulesTest.reload_missingOrEmptyDirectory_keepsPrevious`, `DataRulesTest.unreadableExternalDirectory_startsWithBundled`, `DataRulesTest.reload_allFilesBroken_keepsPrevious`, `DataRulesTest.start_allExternalFilesBroken_usesBundled` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-18 | ConfigMap 마운트(심볼릭 링크)로 놓인 룰 파일을 읽고 갱신을 반영한다 | `DataRulesTest.configMapStyleSymlinks_areRead` | `k8s/detector-service.yaml` | 자동 |
-| DET-19 | 번들 룰 28개가 각각 걸릴 이벤트에 걸리고 아닌 것에는 안 걸린다 | `BundledRulesTest.rule_firesOnPositives_notOnNegatives`, `BundledRulesTest.everyBundledRule_isLoaded_andTested` | `detector-service/src/main/resources/rules/README.md` | 자동 |
+| DET-19 | 번들 룰 35개가 각각 걸릴 이벤트에 걸리고 아닌 것에는 안 걸린다 | `BundledRulesTest.rule_firesOnPositives_notOnNegatives`, `BundledRulesTest.everyBundledRule_isLoaded_andTested` | `detector-service/src/main/resources/rules/README.md` | 자동 |
 | DET-20 | 데이터 룰이 R2(CRITICAL)를 가리지 않고, 심각도가 같으면 코드 룰이 이긴다 | `RulesDataRulesTest.r2_isNeverShadowedByDataRule`, `RulesDataRulesTest.r1_vsDataRule_mostSevereWins_tieGoesToCode`, `RulesDataRulesTest.r3_vsDataRule` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-21 | 데이터 룰은 시퀀스 트리거와 상관 버퍼 대상을 바꾸지 않는다 | `RulesDataRulesTest.dataRules_doNotChangeBufferBehavior` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-22 | 종료(kill) 권고는 명백히 악성인 번들 룰뿐이고, process 가 아닌 룰은 알림만 보낸다 | `BundledRulesTest.onlyClearlyMaliciousRules_recommendKill`, `SigmaParserTest.nonProcessRules_areCappedAtMedium` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
@@ -31,6 +31,7 @@
 | DET-25 | 판정 중 예외를 던지는 룰은 건너뛰고 나머지 룰은 판정된다 | `RulesDataRulesTest.throwingRule_isSkipped` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-26 | 기본 로케일에 상관없이 대소문자 비교와 ruleId 가 같다 | `SigmaParserTest.caseHandling_ignoresDefaultLocale` | `docs/design-docs/decisions/020-sigma-subset-data-rules.md` | 자동 |
 | DET-27 | R3 는 실행 대상(명령의 첫 토큰, 인터프리터가 읽는 스크립트 파일)만 보고, 인자로만 나온 임시 경로에는 걸리지 않는다 | `RulesTest.r3_tempPathAsPlainArgument_noAlert`, `RulesTest.r3_nestedExecutionTarget_alerts`, `RulesTest.r3_realSystemTempPath_stillAlerts` | `docs/design-docs/decisions/027-r3-checks-execution-target-only.md` | 자동 |
+| DET-28 | macOS 룰 7개(SigmaHQ 이식 AppleScript 3개, 자체 인포스틸러 4개: 쿠키, 브라우저 자격증명, 로컬 데이터, curl 압축 파일 업로드)가 ART 명령행과 공개 보고서 명령행에 걸리고 정상 사용에는 안 걸린다. 실기기에서 ART 를 돌린 확인은 아직 없다(자동 열은 단위 테스트까지만이다) | `BundledRulesTest.rule_firesOnPositives_notOnNegatives`(해당 7개 케이스) | `detector-service/src/main/resources/rules/` 룰 파일 머리의 근거 주석 | 자동 |
 
 ## 알림 억제
 

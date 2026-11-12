@@ -1,0 +1,38 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/macos/process_creation/proc_creation_macos_jxa_in_memory_execution.yml (id f1408a58-0e94-4165-b80a-da9f96cf6fc3)
+# 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). 조건과 level 은 그대로다.
+title: JXA In-memory Execution Via OSAScript
+id: f1408a58-0e94-4165-b80a-da9f96cf6fc3
+related:
+  - id: 1bc2e6c5-0885-472b-bed6-be5ea8eace55
+    type: derived
+name: macos_jxa_in_memory_execution
+status: test
+description: Detects possible malicious execution of JXA in-memory via OSAScript
+references:
+  - https://redcanary.com/blog/applescript/
+author: Sohan G (D4rkCiph3r)
+date: 2023-01-31
+tags:
+  - attack.t1059.002
+  - attack.t1059.007
+  - attack.execution
+logsource:
+  category: process_creation
+detection:
+  selection_main:
+    CommandLine|contains|all:
+      - 'osascript'
+      - ' -e '
+      - 'eval'
+      - 'NSData.dataWithContentsOfURL'
+  selection_js:
+    - CommandLine|contains|all:
+        - ' -l '
+        - 'JavaScript'
+    - CommandLine|contains: '.js'
+  condition: all of selection_*
+falsepositives:
+  - Unknown
+# SigmaHQ 원본은 high. 개발 도구와 겹쳐 알림만 낸다(kill 권고는 명백히 악성인 룰만)
+level: medium
