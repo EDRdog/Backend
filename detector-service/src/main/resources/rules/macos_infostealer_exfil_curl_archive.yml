@@ -1,0 +1,43 @@
+# EDRdog 자체 룰이다(SigmaHQ 원본 없음). macOS 인포스틸러가 /tmp 에 만든 압축 파일을 curl 로 올리는 명령.
+# 근거: Sophos 의 ClickFix 인포스틸러 글(수집물을 /tmp 의 ZIP 으로 묶어 PUT 요청으로 올리고 지운다),
+#       Huntress 의 MacSync 분석(/tmp/osalogging.zip 을 올린 뒤 삭제), Red Canary 의 MacSync 글(수집물을 /tmp 에 압축).
+# 개발자가 API 에 curl -F 로 파일을 올리는 일은 흔하다. 그래서 업로드 대상이 @/tmp 또는 -T /tmp 아래의 압축 확장자 파일일 때만 건다.
+# 다운로드(curl -f -o /tmp/x.zip)는 @ 나 -T 가 없어 걸리지 않는다. ART 에는 macOS 용 T1041 테스트가 없다.
+title: Archive Under /tmp Uploaded By Curl
+id: 512efb20-838b-4f14-bafe-daab96beb27f
+name: macos_infostealer_exfil_curl_archive
+status: test
+description: Detects curl uploading an archive file (zip, tar, gz, 7z) located under /tmp or /private/tmp with a form field, a data file reference or an upload-file flag, the exfiltration step of macOS infostealers
+references:
+  - https://www.sophos.com/en-us/blog/evil-evolution-clickfix-and-macos-infostealers
+  - https://www.huntress.com/blog/fake-claude-macsync
+  - https://redcanary.com/threat-detection-report/trends/mac-malware/
+author: EDRdog
+date: 2026-11-12
+tags:
+  - attack.exfiltration
+  - attack.t1041
+logsource:
+  category: process_creation
+detection:
+  selection_curl:
+    Image|endswith: '/curl'
+  selection_upload_path:
+    CommandLine|contains:
+      - '@/tmp/'
+      - '@/private/tmp/'
+      - ' -t /tmp/'
+      - ' -t /private/tmp/'
+      - '--upload-file /tmp/'
+      - '--upload-file /private/tmp/'
+  selection_archive:
+    CommandLine|contains:
+      - '.zip'
+      - '.tar'
+      - '.tgz'
+      - '.gz'
+      - '.7z'
+  condition: selection_curl and selection_upload_path and selection_archive
+falsepositives:
+  - CI or build scripts that upload a zipped artifact from /tmp with curl -F or -T
+level: medium
