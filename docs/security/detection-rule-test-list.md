@@ -272,10 +272,11 @@ MITRE ATT&CK Evaluations 의 탐지 분류를 줄여 쓴다. 시험마다 하나
 포스터에는 결과만 쓴다. 기법을 고른 기준은 출처 표기로 작게 둔다.
 
 > **KISA EDR 평가 항목(수집·탐지·대응) 기준 자체 시험**
-> Atomic Red Team(Red Canary 공개 공격 재현 도구) macOS 시험 **n / m 탐지**
-> 탐지까지 중앙값 x초 · 평소 작업 H시간 오탐 C건
+> Atomic Red Team(Red Canary 공개 공격 재현 도구) 시험 **n / m 탐지**
 
-출처 표기: 시험 기법은 Red Canary·Unit 42·CrowdStrike·Mandiant·Picus 등 위협 보고서 공통 상위 기법 15개. 시험 목록은 룰 작성 전에 고정했다.
+출처 표기(작게): 시험 기법은 Red Canary·Unit 42·CrowdStrike·Mandiant·Picus 등 위협 보고서 공통 상위 기법. 시험 목록은 룰 작성 전에 고정. 실행 환경 macOS 단말 1대(Windows 는 룰 단위 테스트만).
+
+탐지 시간과 오탐 수는 포스터에서 뺀다. 결과 문서에는 남겨 질문이 오면 답한다.
 
 쓰지 않는 표현: "KISA 시험 통과", "KISA 시나리오", "탐지율 100%"(분모 없이). KISA 시나리오와 시료는 비공개라 평가 항목만 기준으로 썼다.
 
