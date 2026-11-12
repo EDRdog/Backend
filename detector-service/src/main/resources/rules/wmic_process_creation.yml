@@ -1,0 +1,30 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_wmic_process_creation.yml (id 526be59f-a573-4eea-b5f7-f0973207634d)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1047 #5 에 걸린다.
+# 감수한 오탐: 관리자가 쓰는 'wmic process call create' 도 걸린다. 알림만 보내는 medium 이라 둔다.
+title: Process Creation Attempt via Wmic.EXE
+id: 526be59f-a573-4eea-b5f7-f0973207634d
+name: wmic_process_creation
+status: test
+description: 'Detects the attempt to create a process via wmic with the process call create flag, which might indicate an attempt to execute a malicious process on the compromised host.'
+references:
+  - https://web.archive.org/web/20250115052252/https://www.sans.org/blog/wmic-for-incident-response/
+  - https://github.com/redcanaryco/atomic-red-team/blob/84215139ee5127f8e3a117e063b604812bd71928/atomics/T1047/T1047.md#atomic-test-5---wmi-execute-local-process
+author: 'Michael Haag, Florian Roth (Nextron Systems), juju4, oscd.community'
+tags:
+  - attack.execution
+  - attack.t1047
+  - car.2016-03-002
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\wmic.exe'
+  selection_cli:
+    CommandLine|contains|all:
+      - 'process'
+      - 'call'
+      - 'create'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: medium
+level: medium

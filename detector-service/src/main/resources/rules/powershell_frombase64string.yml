@@ -1,0 +1,25 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_frombase64string.yml (id e32d4572-9826-4738-b651-95fa63747e8a)
+# 바꾼 것: 없다(원본 조건 그대로). MITRE 첫 태그를 t1027 로 올렸다. ART T1027 #3 과 T1059.001 #10 의 FromBase64String 실행에 걸린다.
+title: Base64 Encoded PowerShell Command Detected
+id: e32d4572-9826-4738-b651-95fa63747e8a
+name: powershell_frombase64string
+status: test
+description: 'Detects usage of the "FromBase64String" function in the commandline which is used to decode a base64 encoded string'
+references:
+  - https://gist.github.com/Neo23x0/6af876ee72b51676c82a2db8d2cd3639
+author: 'Florian Roth (Nextron Systems)'
+tags:
+  - attack.stealth
+  - attack.t1027
+  - attack.execution
+  - attack.t1140
+  - attack.t1059.001
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains: '::FromBase64String('
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

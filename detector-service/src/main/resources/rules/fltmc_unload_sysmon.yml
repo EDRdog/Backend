@@ -1,0 +1,29 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_fltmc_unload_driver_sysmon.yml (id 4d7cda18-1b12-4e52-b45c-d28653210df8)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #14(fltmc.exe unload SysmonDrv)에 걸린다.
+title: Sysmon Driver Unloaded Via Fltmc.EXE
+id: 4d7cda18-1b12-4e52-b45c-d28653210df8
+name: fltmc_unload_sysmon
+status: test
+description: 'Detects possible Sysmon filter driver unloaded via fltmc.exe'
+references:
+  - https://www.darkoperator.com/blog/2018/10/5/operating-offensively-against-sysmon
+author: 'Kirill Kiryanov, oscd.community'
+tags:
+  - attack.stealth
+  - attack.defense-impairment
+  - attack.t1070
+  - attack.t1685
+  - attack.t1685.001
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith: '\fltMC.exe'
+  selection_cli:
+    CommandLine|contains|all:
+      - 'unload'
+      - 'sysmon'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

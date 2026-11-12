@@ -1,0 +1,45 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_disable_defender_av_security_monitoring.yml (id a7ee1722-c3c5-aeff-3212-c777e4733217)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #20(sc stop WinDefend)에 걸린다. #19 는 값이 $true 가 아니라 1 이라 안 걸린다.
+title: Disable Windows Defender AV Security Monitoring
+id: a7ee1722-c3c5-aeff-3212-c777e4733217
+name: defender_disable_monitoring
+status: test
+description: 'Detects attackers attempting to disable Windows Defender using Powershell'
+references:
+  - https://research.nccgroup.com/2020/06/23/wastedlocker-a-new-ransomware-variant-developed-by-the-evil-corp-group/
+  - https://rvsec0n.wordpress.com/2020/01/24/malwares-that-bypass-windows-defender/
+  - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1562.001/T1562.001.md
+author: 'ok @securonix invrep-de, oscd.community, frack113'
+tags:
+  - attack.defense-impairment
+  - attack.t1685
+logsource:
+  category: process_creation
+detection:
+  selection_pwsh_binary:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_pwsh_cli:
+    CommandLine|contains:
+      - '-DisableBehaviorMonitoring $true'
+      - '-DisableRuntimeMonitoring $true'
+  selection_sc_binary:
+    Image|endswith: '\sc.exe'
+  selection_sc_tamper_cmd_stop:
+    CommandLine|contains|all:
+      - 'stop'
+      - 'WinDefend'
+  selection_sc_tamper_cmd_delete:
+    CommandLine|contains|all:
+      - 'delete'
+      - 'WinDefend'
+  selection_sc_tamper_cmd_disabled:
+    CommandLine|contains|all:
+      - 'config'
+      - 'WinDefend'
+      - 'start=disabled'
+  condition: all of selection_pwsh_* or (selection_sc_binary and 1 of selection_sc_tamper_*)
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

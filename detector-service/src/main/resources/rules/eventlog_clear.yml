@@ -1,0 +1,65 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_susp_eventlog_clear.yml (id cc36992a-4671-4f21-a91d-6c2b72a2edf5)
+# 바꾼 것: OriginalFileName 가지를 뺐다. 필터의 msiexec ParentImage 는 파일명 일치로 읽힌다. 이벤트 로그 지우기의 새 ATT&CK 번호는 T1685.005(옛 T1070.001)라서 옛 번호 태그를 덧붙였다.
+# ART T1685.005 #1(wevtutil cl), #2(Clear-EventLog), #4(wevtutil cl 반복)에 걸린다.
+# 감수한 오탐: 관리자의 로그 정리와 설정 변경(sl)도 걸린다. 알림만 보내는 medium 이라 둔다.
+title: Suspicious Eventlog Clearing or Configuration Change Activity
+id: cc36992a-4671-4f21-a91d-6c2b72a2edf5
+name: eventlog_clear
+status: stable
+description: 'Detects the clearing or configuration tampering of EventLog using utilities such as wevtutil, powershell and wmic. This technique were seen used by threat actors and ransomware strains in order to evade defenses.'
+references:
+  - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1070.001/T1070.001.md
+  - https://eqllib.readthedocs.io/en/latest/analytics/5b223758-07d6-4100-9e11-238cfdd0fe97.html
+  - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil
+author: 'Ecco, Daniil Yugoslavskiy, oscd.community, D3F7A5105, Swachchhanda Shrawan Poudel (Nextron Systems)'
+tags:
+  - attack.defense-impairment
+  - attack.t1685.005
+  - attack.t1685.001
+  - attack.t1070.001
+  - car.2016-04-002
+logsource:
+  category: process_creation
+detection:
+  selection_wevtutil_img:
+    Image|endswith: '\wevtutil.exe'
+  selection_wevtutil_cmd:
+    CommandLine|contains:
+      - 'clear-log '
+      - ' cl '
+      - 'set-log '
+      - ' sl '
+      - 'lfn:'
+  selection_other_ps_img:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\powershell_ise.exe'
+      - '\pwsh.exe'
+  selection_other_ps_cmd:
+    - CommandLine|contains:
+        - 'Clear-EventLog '
+        - 'Remove-EventLog '
+        - 'Limit-EventLog '
+        - 'Clear-WinEvent '
+    - CommandLine|contains|all:
+        - 'Eventing.Reader.EventLogSession'
+        - 'ClearLog'
+    - CommandLine|contains|all:
+        - 'Diagnostics.EventLog'
+        - 'Clear'
+  selection_other_wmi:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\powershell_ise.exe'
+      - '\pwsh.exe'
+      - '\wmic.exe'
+    CommandLine|contains: 'ClearEventLog'
+  filter_main_msiexec:
+    ParentImage:
+      - 'C:\Windows\SysWOW64\msiexec.exe'
+      - 'C:\Windows\System32\msiexec.exe'
+    CommandLine|contains: ' sl '
+  condition: ((all of selection_wevtutil_*) or (all of selection_other_ps_*) or selection_other_wmi) and not 1 of filter_main_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

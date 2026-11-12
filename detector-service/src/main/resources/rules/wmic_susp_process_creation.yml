@@ -1,0 +1,51 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_wmic_susp_process_creation.yml (id 3c89a1e8-0fba-449e-8f1b-8409d6267ec8)
+# 바꾼 것: 없다(원본 조건 그대로). ART T1047 #9 의 'wmic ... process call create rundll32' 에 걸린다.
+title: Suspicious Process Created Via Wmic.EXE
+id: 3c89a1e8-0fba-449e-8f1b-8409d6267ec8
+name: wmic_susp_process_creation
+status: test
+description: 'Detects WMIC executing process call create with suspicious calls to processes such as rundll32, regsrv32, etc.'
+references:
+  - https://thedfirreport.com/2020/10/08/ryuks-return/
+  - https://symantec-enterprise-blogs.security.com/blogs/threat-intelligence/ransomware-hive-conti-avoslocker
+author: 'Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.execution
+  - attack.t1047
+logsource:
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains|all:
+      - 'process '
+      - 'call '
+      - 'create '
+    CommandLine|contains:
+      - 'rundll32'
+      - 'bitsadmin'
+      - 'regsvr32'
+      - 'cmd.exe /c '
+      - 'cmd.exe /k '
+      - 'cmd.exe /r '
+      - 'cmd /c '
+      - 'cmd /k '
+      - 'cmd /r '
+      - 'powershell'
+      - 'pwsh'
+      - 'certutil'
+      - 'cscript'
+      - 'wscript'
+      - 'mshta'
+      - '\Users\Public\'
+      - '\Windows\Temp\'
+      - '\AppData\Local\'
+      - '%temp%'
+      - '%tmp%'
+      - '%ProgramData%'
+      - '%appdata%'
+      - '%comspec%'
+      - '%localappdata%'
+  condition: selection
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium

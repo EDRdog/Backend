@@ -1,0 +1,26 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_cmd_stdin_redirect.yml (id 241e802a-b65e-484f-88cd-c2dc10f9206d)
+# 바꾼 것: OriginalFileName 가지를 뺐다. ART T1059.003 #5 의 'cmd /r cmd<파일' 에 걸린다.
+# 감수한 오탐: cmd 명령행에 '<' 만 있으면 걸려서 'cmd /c "x < nul"' 같은 정상 스크립트도 걸린다. 알림만 보내는 medium 이라 둔다.
+title: Read Contents From Stdin Via Cmd.EXE
+id: 241e802a-b65e-484f-88cd-c2dc10f9206d
+name: cmd_stdin_redirect
+status: test
+description: 'Detect the use of "<" to read and potentially execute a file via cmd.exe'
+references:
+  - https://github.com/redcanaryco/atomic-red-team/blob/40b77d63808dd4f4eafb83949805636735a1fd15/atomics/T1059.003/T1059.003.md
+  - https://web.archive.org/web/20220306121156/https://www.x86matthew.com/view_post?id=ntdll_pipe
+author: 'frack113, Nasreddine Bencherchali (Nextron Systems)'
+tags:
+  - attack.execution
+  - attack.t1059.003
+logsource:
+  category: process_creation
+detection:
+  selection_cmd:
+    Image|endswith: '\cmd.exe'
+  selection_cli:
+    CommandLine|contains: '<'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: medium
+level: medium

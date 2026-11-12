@@ -104,6 +104,211 @@ data:
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
     level: medium
+  clickfix_run_dialog_shell.yml: |
+    # EDRdog 자체 룰이다. SigmaHQ 에는 대응하는 룰이 없다(ClickFix 전용 룰이 없고, Windows 로 옮길 수 있게 준비된 룰도 없었다).
+    # 근거: Microsoft 보안 블로그(2025-08-21)가 설명한 ClickFix 흐름. 사용자가 실행 대화상자(Win+R)에 붙여넣은 명령을 explorer.exe 가 실행하고,
+    # 자식 프로세스는 숨김 창 PowerShell(-w hidden), iex, iwr, irm, DownloadString, mshta, curl 로 원격 페이로드를 받아 실행한다.
+    # ART T1204.004 #1 은 수동 시험이다. 붙여넣는 명령은 iex ((New-Object System.Net.WebClient).DownloadString('https://...')) 이다.
+    # 숨김 창만으로는 걸지 않는다. 바로가기(.lnk)로 띄우는 정상 PowerShell 도 explorer.exe 가 부모라서, 숨김 창은 -c, -command, -enc 인라인 실행과 함께일 때만 본다.
+    # 한계: 부모가 explorer.exe 가 아닌 경로(Windows Terminal 에 붙여넣기)는 보지 못한다. Win+R, 탐색기 주소창 변형은 본다.
+    title: Potential ClickFix Paste-and-Run Shell From Explorer
+    id: daa6856a-25d6-4a83-b5a4-9c9b86557feb
+    name: clickfix_run_dialog_shell
+    status: experimental
+    description: 'Detects explorer.exe launching powershell, mshta or cmd with a download-and-execute command line or an inline hidden-window command, the process chain of ClickFix copy-and-paste social engineering'
+    references:
+      - https://www.microsoft.com/en-us/security/blog/2025/08/21/think-before-you-clickfix-analyzing-the-clickfix-social-engineering-technique/
+      - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1204.004/T1204.004.md
+    author: 'EDRdog'
+    tags:
+      - attack.execution
+      - attack.t1204.004
+    logsource:
+      category: process_creation
+    detection:
+      selection_parent:
+        ParentImage|endswith: '\explorer.exe'
+      selection_ps_img:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_ps_download:
+        CommandLine|contains:
+          - 'invoke-expression'
+          - ' iex '
+          - ' iex('
+          - '(iex '
+          - '|iex'
+          - 'downloadstring'
+          - 'downloadfile'
+          - 'invoke-webrequest'
+          - ' iwr '
+          - '(iwr '
+          - ' irm '
+          - '(irm '
+          - 'invoke-restmethod'
+          - 'net.webclient'
+          - 'start-bitstransfer'
+      selection_ps_hidden:
+        CommandLine|contains:
+          - ' -w hidden'
+          - ' -windowstyle hidden'
+          - ' -w h '
+      selection_ps_inline:
+        CommandLine|contains:
+          - ' -c '
+          - ' -command '
+          - ' -enc'
+      selection_mshta:
+        Image|endswith: '\mshta.exe'
+        CommandLine|contains: 'http'
+      selection_cmd_img:
+        Image|endswith: '\cmd.exe'
+      selection_cmd_url:
+        CommandLine|contains: 'http'
+      selection_cmd_tool:
+        CommandLine|contains:
+          - 'powershell'
+          - 'pwsh'
+          - 'mshta'
+          - 'curl '
+          - 'bitsadmin'
+          - 'certutil'
+      condition: selection_parent and ((selection_ps_img and (selection_ps_download or (selection_ps_hidden and selection_ps_inline))) or selection_mshta or all of selection_cmd_*)
+    # 알림만 보낸다. 사용자가 직접 붙여넣어 실행한 명령이라 정상 사용(개발자가 설치 한 줄 명령을 실행 대화상자에 붙여넣기)과 겹칠 수 있다.
+    level: medium
+  cmd_stdin_redirect.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_cmd_stdin_redirect.yml (id 241e802a-b65e-484f-88cd-c2dc10f9206d)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1059.003 #5 의 'cmd /r cmd<파일' 에 걸린다.
+    # 감수한 오탐: cmd 명령행에 '<' 만 있으면 걸려서 'cmd /c "x < nul"' 같은 정상 스크립트도 걸린다. 알림만 보내는 medium 이라 둔다.
+    title: Read Contents From Stdin Via Cmd.EXE
+    id: 241e802a-b65e-484f-88cd-c2dc10f9206d
+    name: cmd_stdin_redirect
+    status: test
+    description: 'Detect the use of "<" to read and potentially execute a file via cmd.exe'
+    references:
+      - https://github.com/redcanaryco/atomic-red-team/blob/40b77d63808dd4f4eafb83949805636735a1fd15/atomics/T1059.003/T1059.003.md
+      - https://web.archive.org/web/20220306121156/https://www.x86matthew.com/view_post?id=ntdll_pipe
+    author: 'frack113, Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.execution
+      - attack.t1059.003
+    logsource:
+      category: process_creation
+    detection:
+      selection_cmd:
+        Image|endswith: '\cmd.exe'
+      selection_cli:
+        CommandLine|contains: '<'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: medium
+    level: medium
+  curl_susp_download.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_curl_susp_download.yml (id e218595b-bbe7-4ee5-8a96-f32a24ad3468)
+    # 바꾼 것: Product 가지를 뺐다(에이전트가 보내지 않는다). git 필터의 Image, ParentImage 는 파일명 일치로 읽힌다. ART T1105 #18 에 걸린다.
+    title: Suspicious Curl.EXE Download
+    id: e218595b-bbe7-4ee5-8a96-f32a24ad3468
+    name: curl_susp_download
+    status: test
+    description: 'Detects a suspicious curl process start on Windows and outputs the requested document to a local file'
+    references:
+      - https://twitter.com/max_mal_/status/1542461200797163522
+      - https://web.archive.org/web/20200128160046/https://twitter.com/reegun21/status/1222093798009790464
+      - https://github.com/pr0xylife/Qakbot/blob/4f0795d79dabee5bc9dd69f17a626b48852e7869/Qakbot_AA_23.06.2022.txt
+      - https://www.volexity.com/blog/2022/07/28/sharptongue-deploys-clever-mail-stealing-browser-extension-sharpext/
+      - https://github.com/redcanaryco/atomic-red-team/blob/0f229c0e42bfe7ca736a14023836d65baa941ed2/atomics/T1105/T1105.md#atomic-test-18---curl-download-file
+    author: 'Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+    logsource:
+      category: process_creation
+    detection:
+      selection_curl:
+        Image|endswith: '\curl.exe'
+      selection_susp_locations:
+        CommandLine|contains:
+          - '%AppData%'
+          - '%Public%'
+          - '%Temp%'
+          - '%tmp%'
+          - '\AppData\'
+          - '\Desktop\'
+          - '\Temp\'
+          - '\Users\Public\'
+          - 'C:\PerfLogs\'
+          - 'C:\ProgramData\'
+          - 'C:\Windows\Temp\'
+      selection_susp_extensions:
+        CommandLine|endswith:
+          - '.dll'
+          - '.gif'
+          - '.jpeg'
+          - '.jpg'
+          - '.png'
+          - '.temp'
+          - '.tmp'
+          - '.txt'
+          - '.vbe'
+          - '.vbs'
+      filter_optional_git_windows:
+        ParentImage: 'C:\Program Files\Git\usr\bin\sh.exe'
+        Image: 'C:\Program Files\Git\mingw64\bin\curl.exe'
+        CommandLine|contains|all:
+          - '--silent --show-error --output '
+          - 'gfw-httpget-'
+          - 'AppData'
+      condition: selection_curl and 1 of selection_susp_* and not 1 of filter_optional_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  defender_disable_monitoring.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_disable_defender_av_security_monitoring.yml (id a7ee1722-c3c5-aeff-3212-c777e4733217)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #20(sc stop WinDefend)에 걸린다. #19 는 값이 $true 가 아니라 1 이라 안 걸린다.
+    title: Disable Windows Defender AV Security Monitoring
+    id: a7ee1722-c3c5-aeff-3212-c777e4733217
+    name: defender_disable_monitoring
+    status: test
+    description: 'Detects attackers attempting to disable Windows Defender using Powershell'
+    references:
+      - https://research.nccgroup.com/2020/06/23/wastedlocker-a-new-ransomware-variant-developed-by-the-evil-corp-group/
+      - https://rvsec0n.wordpress.com/2020/01/24/malwares-that-bypass-windows-defender/
+      - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1562.001/T1562.001.md
+    author: 'ok @securonix invrep-de, oscd.community, frack113'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      selection_pwsh_binary:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_pwsh_cli:
+        CommandLine|contains:
+          - '-DisableBehaviorMonitoring $true'
+          - '-DisableRuntimeMonitoring $true'
+      selection_sc_binary:
+        Image|endswith: '\sc.exe'
+      selection_sc_tamper_cmd_stop:
+        CommandLine|contains|all:
+          - 'stop'
+          - 'WinDefend'
+      selection_sc_tamper_cmd_delete:
+        CommandLine|contains|all:
+          - 'delete'
+          - 'WinDefend'
+      selection_sc_tamper_cmd_disabled:
+        CommandLine|contains|all:
+          - 'config'
+          - 'WinDefend'
+          - 'start=disabled'
+      condition: all of selection_pwsh_* or (selection_sc_binary and 1 of selection_sc_tamper_*)
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   dns_mega_userstorage.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/dns_query/dns_query_win_mega_nz.yml (id 613c03ba-0779-4a53-8a1f-47f914a4ded3)
@@ -182,6 +387,72 @@ data:
       condition: selection
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: medium
+  eventlog_clear.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_susp_eventlog_clear.yml (id cc36992a-4671-4f21-a91d-6c2b72a2edf5)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. 필터의 msiexec ParentImage 는 파일명 일치로 읽힌다. 이벤트 로그 지우기의 새 ATT&CK 번호는 T1685.005(옛 T1070.001)라서 옛 번호 태그를 덧붙였다.
+    # ART T1685.005 #1(wevtutil cl), #2(Clear-EventLog), #4(wevtutil cl 반복)에 걸린다.
+    # 감수한 오탐: 관리자의 로그 정리와 설정 변경(sl)도 걸린다. 알림만 보내는 medium 이라 둔다.
+    title: Suspicious Eventlog Clearing or Configuration Change Activity
+    id: cc36992a-4671-4f21-a91d-6c2b72a2edf5
+    name: eventlog_clear
+    status: stable
+    description: 'Detects the clearing or configuration tampering of EventLog using utilities such as wevtutil, powershell and wmic. This technique were seen used by threat actors and ransomware strains in order to evade defenses.'
+    references:
+      - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1070.001/T1070.001.md
+      - https://eqllib.readthedocs.io/en/latest/analytics/5b223758-07d6-4100-9e11-238cfdd0fe97.html
+      - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil
+    author: 'Ecco, Daniil Yugoslavskiy, oscd.community, D3F7A5105, Swachchhanda Shrawan Poudel (Nextron Systems)'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685.005
+      - attack.t1685.001
+      - attack.t1070.001
+      - car.2016-04-002
+    logsource:
+      category: process_creation
+    detection:
+      selection_wevtutil_img:
+        Image|endswith: '\wevtutil.exe'
+      selection_wevtutil_cmd:
+        CommandLine|contains:
+          - 'clear-log '
+          - ' cl '
+          - 'set-log '
+          - ' sl '
+          - 'lfn:'
+      selection_other_ps_img:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\powershell_ise.exe'
+          - '\pwsh.exe'
+      selection_other_ps_cmd:
+        - CommandLine|contains:
+            - 'Clear-EventLog '
+            - 'Remove-EventLog '
+            - 'Limit-EventLog '
+            - 'Clear-WinEvent '
+        - CommandLine|contains|all:
+            - 'Eventing.Reader.EventLogSession'
+            - 'ClearLog'
+        - CommandLine|contains|all:
+            - 'Diagnostics.EventLog'
+            - 'Clear'
+      selection_other_wmi:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\powershell_ise.exe'
+          - '\pwsh.exe'
+          - '\wmic.exe'
+        CommandLine|contains: 'ClearEventLog'
+      filter_main_msiexec:
+        ParentImage:
+          - 'C:\Windows\SysWOW64\msiexec.exe'
+          - 'C:\Windows\System32\msiexec.exe'
+        CommandLine|contains: ' sl '
+      condition: ((all of selection_wevtutil_*) or (all of selection_other_ps_*) or selection_other_wmi) and not 1 of filter_main_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   file_lsass_dump_name.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/file/file_event/file_event_win_lsass_default_dump_file_names.yml (id a5a2d357-1ab8-4675-a967-ef9990a59391)
@@ -238,6 +509,130 @@ data:
           - 'mimilsa.log' # MemSSP default file
       condition: selection
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: critical
+    level: medium
+  finger_execution.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_finger_execution.yml (id af491bca-e752-4b44-9c86-df5680533dbc)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1105 #16 에 걸린다. finger.exe 는 요즘 정상 사용이 거의 없어 실행 자체를 본다.
+    title: Finger.EXE Execution
+    id: af491bca-e752-4b44-9c86-df5680533dbc
+    name: finger_execution
+    status: test
+    description: 'Detects execution of the finger.exe utility. Any execution of finger.exe can be considered suspicious and worth investigating, given the rareness of machines having the finger service.'
+    references:
+      - https://twitter.com/bigmacjpg/status/1349727699863011328?s=12
+      - https://app.any.run/tasks/40115012-a919-4208-bfed-41e82cb3dadf/
+      - http://hyp3rlinx.altervista.org/advisories/Windows_TCPIP_Finger_Command_C2_Channel_and_Bypassing_Security_Software.txt
+    author: 'Florian Roth (Nextron Systems), omkar72, oscd.community'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        Image|endswith: '\finger.exe'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  fltmc_unload_sysmon.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_fltmc_unload_driver_sysmon.yml (id 4d7cda18-1b12-4e52-b45c-d28653210df8)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #14(fltmc.exe unload SysmonDrv)에 걸린다.
+    title: Sysmon Driver Unloaded Via Fltmc.EXE
+    id: 4d7cda18-1b12-4e52-b45c-d28653210df8
+    name: fltmc_unload_sysmon
+    status: test
+    description: 'Detects possible Sysmon filter driver unloaded via fltmc.exe'
+    references:
+      - https://www.darkoperator.com/blog/2018/10/5/operating-offensively-against-sysmon
+    author: 'Kirill Kiryanov, oscd.community'
+    tags:
+      - attack.stealth
+      - attack.defense-impairment
+      - attack.t1070
+      - attack.t1685
+      - attack.t1685.001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\fltMC.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - 'unload'
+          - 'sysmon'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  fsutil_usage.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_fsutil_usage.yml (id add64136-62e5-48ea-807e-88638d02df1e)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1070 #1(usn deletejournal), #2(file setZeroData)에 걸린다.
+    # 감수한 오탐: 관리자의 USN 저널 조정, 파일 0 채우기도 걸린다. 알림만 보내는 medium 이라 둔다.
+    title: Fsutil Suspicious Invocation
+    id: add64136-62e5-48ea-807e-88638d02df1e
+    name: fsutil_usage
+    status: stable
+    description: 'Detects suspicious parameters of fsutil (deleting USN journal, configuring it with small size, etc). Might be used by ransomwares during the attack (seen by NotPetya and others).'
+    references:
+      - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-usn
+      - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1070/T1070.md
+      - https://eqllib.readthedocs.io/en/latest/analytics/c91f422a-5214-4b17-8664-c5fcf115c0a2.html
+      - https://github.com/albertzsigovits/malware-notes/blob/558898932c1579ff589290092a2c8febefc3a4c9/Ransomware/Lockbit.md
+    author: 'Ecco, E.M. Anhaus, oscd.community'
+    tags:
+      - attack.impact
+      - attack.stealth
+      - attack.t1070
+      - attack.t1485
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\fsutil.exe'
+      selection_cli:
+        CommandLine|contains:
+          - 'deletejournal'
+          - 'createjournal'
+          - 'setZeroData'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  gpg_batch_encrypt.yml: |
+    # EDRdog 자체 룰이다. SigmaHQ 의 T1486 룰 중 gpg 를 보는 둘(gpg4win_portable_execution, renamed_gpg4win)은 이 에이전트로 옮길 수 없다.
+    # 하나는 설치 경로(Image|contains)로 정상을 걸러야 하는데 에이전트가 경로를 보내지 않고, 다른 하나는 OriginalFileName 만 본다.
+    # 그래서 실행 자체가 아니라 랜섬웨어식 사용(대화형 입력 없이 비밀번호를 주고 파일을 대칭키로 암호화)을 본다. SigmaHQ 두 룰 설명이 gpg 를 랜섬웨어의 암호화 도구로 든다.
+    # ART T1486 #8(Data Encrypted with GPG4Win)에 걸린다. git 커밋 서명(--status-fd=2 -bsau KEY)과 복호화에는 걸리지 않는다.
+    title: Batch Symmetric File Encryption Via Gpg.EXE
+    id: 8911bc28-e765-4e98-97ca-a2941471d240
+    name: gpg_batch_encrypt
+    status: experimental
+    description: 'Detects gpg.exe encrypting a file symmetrically with a passphrase given on the command line in batch mode, a way ransomware and loaders encrypt data'
+    references:
+      - https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1486/T1486.md
+      - https://github.com/SigmaHQ/sigma/blob/d7c9da1/rules/windows/process_creation/proc_creation_win_gpg4win_portable_execution.yml
+    author: 'EDRdog'
+    tags:
+      - attack.impact
+      - attack.t1486
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\gpg.exe'
+          - '\gpg2.exe'
+      selection_batch:
+        CommandLine|contains|all:
+          - '--batch'
+          - '--passphrase'
+      selection_symmetric:
+        CommandLine|contains:
+          - ' -c '
+          - '--symmetric'
+      condition: all of selection_*
+    # 알림만 보낸다. 백업 스크립트가 같은 방식으로 암호화할 수 있다.
     level: medium
   macos_csrutil_disable.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
@@ -529,6 +924,65 @@ data:
       condition: 1 of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
+  mpcmdrun_download_arbitrary_file.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_mpcmdrun_download_arbitrary_file.yml (id 46123129-1024-423e-9fae-43af4a0fa9a5)
+    # 바꾼 것: OriginalFileName, Description 가지를 뺐다. MITRE 첫 태그를 t1105 로 올렸다. ART T1105 #13 에 걸린다.
+    title: File Download Via Windows Defender MpCmpRun.EXE
+    id: 46123129-1024-423e-9fae-43af4a0fa9a5
+    name: mpcmdrun_download_arbitrary_file
+    status: test
+    description: 'Detects the use of Windows Defender MpCmdRun.EXE to download files'
+    references:
+      - https://web.archive.org/web/20200903194959/https://twitter.com/djmtshepana/status/1301608169496612866
+      - https://lolbas-project.github.io/lolbas/Binaries/MpCmdRun/
+    author: 'Matthew Matchen'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+      - attack.stealth
+      - attack.t1218
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        - Image|endswith: '\MpCmdRun.exe'
+        - CommandLine|contains: 'MpCmdRun.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - 'DownloadFile'
+          - 'url'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  mpcmdrun_remove_definitions.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_mpcmdrun_remove_windows_defender_definition.yml (id 9719a8aa-401c-41af-8108-ced7ec9cd75c)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1685 #23 에 걸린다.
+    title: Windows Defender Definition Files Removed
+    id: 9719a8aa-401c-41af-8108-ced7ec9cd75c
+    name: mpcmdrun_remove_definitions
+    status: test
+    description: 'Adversaries may disable security tools to avoid possible detection of their tools and activities by removing Windows Defender Definition Files'
+    references:
+      - https://github.com/redcanaryco/atomic-red-team/blob/f339e7da7d05f6057fdfcdd3742bfcf365fee2a9/atomics/T1562.001/T1562.001.md
+      - https://unit42.paloaltonetworks.com/unit42-gorgon-group-slithering-nation-state-cybercrime/
+    author: 'frack113'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\MpCmdRun.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - ' -RemoveDefinitions'
+          - ' -All'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   mshta_remote_hta.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_mshta_http.yml (id b98d0db6-511d-45de-ad02-e82a98729620)
@@ -675,6 +1129,73 @@ data:
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
     level: medium
+  powershell_amsi_init_failed_bypass.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_amsi_init_failed_bypass.yml (id 30edb182-aa75-42c0-b0a9-e998bb29067c)
+    # 바꾼 것: 없다(원본 조건 그대로). ART T1685 #16 에 걸린다.
+    title: Potential AMSI Bypass Via .NET Reflection
+    id: 30edb182-aa75-42c0-b0a9-e998bb29067c
+    name: powershell_amsi_init_failed_bypass
+    status: test
+    description: 'Detects Request to "amsiInitFailed" that can be used to disable AMSI Scanning'
+    references:
+      - https://s3cur3th1ssh1t.github.io/Bypass_AMSI_by_manual_modification/
+      - https://www.mdsec.co.uk/2018/06/exploring-powershell-amsi-and-logging-evasion/
+    author: 'Markus Neis, @Kostastsale'
+    tags:
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        - CommandLine|contains|all:
+            - 'System.Management.Automation.AmsiUtils'
+            - 'amsiInitFailed'
+        - CommandLine|contains|all:
+            - '[Ref].Assembly.GetType'
+            - 'SetValue($null,$true)'
+            - 'NonPublic,Static'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  powershell_base64_invoke.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_base64_invoke.yml (id 6385697e-9f1b-40bd-8817-f4a91f40508e)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. MITRE 첫 태그를 t1027 로 올렸다(t1059.001 은 powershell_encoded_command 가 맡는다). ART T1047 #7 의 인코딩된 Invoke-WmiMethod 에 걸린다.
+    title: PowerShell Base64 Encoded Invoke Keyword
+    id: 6385697e-9f1b-40bd-8817-f4a91f40508e
+    name: powershell_base64_invoke
+    status: test
+    description: 'Detects UTF-8 and UTF-16 Base64 encoded powershell Invoke- calls'
+    references:
+      - https://thedfirreport.com/2022/05/09/seo-poisoning-a-gootloader-story/
+    author: 'pH-T (Nextron Systems), Harjot Singh, @cyb3rjy0t'
+    tags:
+      - attack.stealth
+      - attack.t1027
+      - attack.execution
+      - attack.t1059.001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_cli_enc:
+        CommandLine|contains: ' -e'
+      selection_cli_invoke:
+        CommandLine|contains:
+          - 'SQBuAHYAbwBrAGUALQ'
+          - 'kAbgB2AG8AawBlAC0A'
+          - 'JAG4AdgBvAGsAZQAtA'
+          - 'SW52b2tlL'
+          - 'ludm9rZS'
+          - 'JbnZva2Ut'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   powershell_defender_exclusion.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_powershell_defender_exclusion.yml (id 17769c90-230e-488b-a463-e05c08e9d48f)
@@ -703,6 +1224,43 @@ data:
           - ' -ExclusionIpAddress '
       condition: all of selection*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: medium
+    level: medium
+  powershell_download_patterns.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_download_patterns.yml (id 3b6ab547-8ec2-4991-b9d2-2b06702a48d7)
+    # 바꾼 것: OriginalFileName 가지를 뺐다(에이전트가 보내지 않는다). ART T1105 #10, #15 의 WebClient 다운로드에 걸린다.
+    title: PowerShell Download Pattern
+    id: 3b6ab547-8ec2-4991-b9d2-2b06702a48d7
+    name: powershell_download_patterns
+    status: test
+    description: 'Detects a Powershell process that contains download commands in its command line string'
+    references:
+      - https://blog.redteam.pl/2020/06/black-kingdom-ransomware.html
+      - https://lab52.io/blog/winter-vivern-all-summer/
+      - https://hatching.io/blog/powershell-analysis/
+    author: 'Florian Roth (Nextron Systems), oscd.community, Jonhnathan Ribeiro'
+    tags:
+      - attack.execution
+      - attack.t1059.001
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\powershell_ise.exe'
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_cli_all:
+        CommandLine|contains|all:
+          - 'new-object'
+          - 'net.webclient).'
+          - 'download'
+      selection_cli_call:
+        CommandLine|contains:
+          - 'string('
+          - 'file('
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: medium
     level: medium
   powershell_encoded_command.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
@@ -756,6 +1314,78 @@ data:
       condition: selection_img and (all of selection_cli_* or selection_redacted or selection_standalone) and not 1 of filter_optional_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: medium
+  powershell_frombase64string.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_frombase64string.yml (id e32d4572-9826-4738-b651-95fa63747e8a)
+    # 바꾼 것: 없다(원본 조건 그대로). MITRE 첫 태그를 t1027 로 올렸다. ART T1027 #3 과 T1059.001 #10 의 FromBase64String 실행에 걸린다.
+    title: Base64 Encoded PowerShell Command Detected
+    id: e32d4572-9826-4738-b651-95fa63747e8a
+    name: powershell_frombase64string
+    status: test
+    description: 'Detects usage of the "FromBase64String" function in the commandline which is used to decode a base64 encoded string'
+    references:
+      - https://gist.github.com/Neo23x0/6af876ee72b51676c82a2db8d2cd3639
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.stealth
+      - attack.t1027
+      - attack.execution
+      - attack.t1140
+      - attack.t1059.001
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains: '::FromBase64String('
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  powershell_invoke_webrequest_download.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_invoke_webrequest_download.yml (id 5e3cc4d8-3e68-43db-8656-eaaeefdec9cc)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ':\Windows\' 값도 뺐다(에이전트가 보내는 명령행 첫 토큰이 C:\Windows\System32\...\powershell.exe 라서 이 값이 모든 powershell 에 걸린다). ART T1105 #29 의 iwr -Outfile %temp% 에 걸린다.
+    title: Suspicious Invoke-WebRequest Execution
+    id: 5e3cc4d8-3e68-43db-8656-eaaeefdec9cc
+    name: powershell_invoke_webrequest_download
+    status: test
+    description: 'Detects a suspicious call to Invoke-WebRequest cmdlet where the and output is located in a suspicious location'
+    references:
+      - https://www.sentinelone.com/blog/living-off-windows-defender-lockbit-ransomware-sideloads-cobalt-strike-through-microsoft-security-tool/
+    author: 'Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.command-and-control
+      - attack.t1105
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith:
+          - '\powershell_ise.exe'
+          - '\powershell.exe'
+          - '\pwsh.exe'
+      selection_commands:
+        CommandLine|contains:
+          - 'curl '
+          - 'Invoke-WebRequest'
+          - 'iwr '
+          - 'wget '
+      selection_flags:
+        CommandLine|contains:
+          - ' -ur'
+          - ' -o'
+      selection_susp_locations:
+        CommandLine|contains:
+          - '\AppData\'
+          - '\Desktop\'
+          - '\Temp\'
+          - '\Users\Public\'
+          - '%AppData%'
+          - '%Public%'
+          - '%Temp%'
+          - '%tmp%'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   powershell_shadowcopy_delete.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_powershell_shadowcopy_deletion.yml (id 21ff4ca9-f13a-41ad-b828-0077b2af2e40)
@@ -790,6 +1420,36 @@ data:
       condition: all of selection*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
+  powershell_susp_download_patterns.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_powershell_susp_download_patterns.yml (id e6c54d94-498c-4562-a37c-b469d8e9a275)
+    # 바꾼 것: 없다(원본 조건 그대로). ART T1059.001 #3, #5 의 IEX 다운로드 크래들에 걸린다.
+    title: Suspicious PowerShell Download and Execute Pattern
+    id: e6c54d94-498c-4562-a37c-b469d8e9a275
+    name: powershell_susp_download_patterns
+    status: test
+    description: 'Detects suspicious PowerShell download patterns that are often used in malicious scripts, stagers or downloaders.'
+    references:
+      - https://gist.github.com/jivoi/c354eaaf3019352ce32522f916c03d70
+      - https://www.trendmicro.com/en_us/research/22/j/lv-ransomware-exploits-proxyshell-in-attack.html
+    author: 'Florian Roth (Nextron Systems)'
+    tags:
+      - attack.execution
+      - attack.t1059.001
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains:
+          - 'IEX ((New-Object Net.WebClient).DownloadString'
+          - 'IEX (New-Object Net.WebClient).DownloadString'
+          - 'IEX((New-Object Net.WebClient).DownloadString'
+          - 'IEX(New-Object Net.WebClient).DownloadString'
+          - ' -command (New-Object System.Net.WebClient).DownloadFile('
+          - ' -c (New-Object System.Net.WebClient).DownloadFile('
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   procdump_lsass.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_sysinternals_procdump_lsass.yml (id 5afee48e-67dd-4e03-a783-f74259dcf998)
@@ -827,6 +1487,43 @@ data:
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
+  reg_bitlocker_policy.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_reg_bitlocker.yml (id 0e0255bf-2548-47b8-9582-c0955c9283f5)
+    # 바꾼 것: 없다(원본 조건 그대로). 걸리는 ART 시험은 T1112 아래 BitLocker 레지스트리 시험(예: EnableBDEWithNoTPM)이다. ART T1486 에는 이 명령을 쓰는 시험이 없다.
+    title: Suspicious Reg Add BitLocker
+    id: 0e0255bf-2548-47b8-9582-c0955c9283f5
+    name: reg_bitlocker_policy
+    status: test
+    description: 'Detects suspicious addition to BitLocker related registry keys via the reg.exe utility'
+    references:
+      - https://thedfirreport.com/2021/11/15/exchange-exploit-leads-to-domain-wide-ransomware/
+    author: 'frack113'
+    tags:
+      - attack.impact
+      - attack.t1486
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains|all:
+          - 'REG'
+          - 'ADD'
+          - '\SOFTWARE\Policies\Microsoft\FVE'
+          - '/v'
+          - '/f'
+        CommandLine|contains:
+          - 'EnableBDEWithNoTPM'
+          - 'UseAdvancedStartup'
+          - 'UseTPM'
+          - 'UseTPMKey'
+          - 'UseTPMKeyPIN'
+          - 'RecoveryKeyMessageSource'
+          - 'UseTPMPIN'
+          - 'RecoveryKeyMessage'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
   reg_dump_sensitive_hives.yml: |
     # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
     # 원본: rules/windows/process_creation/proc_creation_win_reg_dumping_sensitive_hives.yml (id fd877b94-9bb5-4191-bb25-d79cbd93c167)
@@ -931,3 +1628,116 @@ data:
       condition: all of selection_*
     # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다. 원본 level: high
     level: high
+  wmic_namespace_defender.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_wmic_namespace_defender.yml (id 51cbac1e-eee3-4a90-b1b7-358efb81fa0a)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. 원본 값의 '\\\\root\\Microsoft' 는 Sigma 이스케이프라서 실제 명령행 모양인 '\\root\Microsoft' 로 풀어 썼다(이 파서는 이스케이프를 해석하지 않는다).
+    # ART T1685 #40(원본 표기 T1562.001)에 걸린다.
+    title: Potential Windows Defender Tampering Via Wmic.EXE
+    id: 51cbac1e-eee3-4a90-b1b7-358efb81fa0a
+    name: wmic_namespace_defender
+    status: test
+    description: 'Detects potential tampering with Windows Defender settings such as adding exclusion using wmic'
+    references:
+      - https://github.com/redcanaryco/atomic-red-team/blob/5c1e6f1b4fafd01c8d1ece85f510160fc1275fbf/atomics/T1562.001/T1562.001.md
+      - https://www.bleepingcomputer.com/news/security/gootkit-malware-bypasses-windows-defender-by-setting-path-exclusions/
+      - https://www.bleepingcomputer.com/news/security/iobit-forums-hacked-to-spread-ransomware-to-its-members/
+    author: 'frack113'
+    tags:
+      - attack.execution
+      - attack.t1047
+      - attack.defense-impairment
+      - attack.t1685
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\wmic.exe'
+      selection_cli:
+        CommandLine|contains: '/Namespace:\\root\Microsoft\Windows\Defender'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium
+  wmic_process_creation.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_wmic_process_creation.yml (id 526be59f-a573-4eea-b5f7-f0973207634d)
+    # 바꾼 것: OriginalFileName 가지를 뺐다. ART T1047 #5 에 걸린다.
+    # 감수한 오탐: 관리자가 쓰는 'wmic process call create' 도 걸린다. 알림만 보내는 medium 이라 둔다.
+    title: Process Creation Attempt via Wmic.EXE
+    id: 526be59f-a573-4eea-b5f7-f0973207634d
+    name: wmic_process_creation
+    status: test
+    description: 'Detects the attempt to create a process via wmic with the process call create flag, which might indicate an attempt to execute a malicious process on the compromised host.'
+    references:
+      - https://web.archive.org/web/20250115052252/https://www.sans.org/blog/wmic-for-incident-response/
+      - https://github.com/redcanaryco/atomic-red-team/blob/84215139ee5127f8e3a117e063b604812bd71928/atomics/T1047/T1047.md#atomic-test-5---wmi-execute-local-process
+    author: 'Michael Haag, Florian Roth (Nextron Systems), juju4, oscd.community'
+    tags:
+      - attack.execution
+      - attack.t1047
+      - car.2016-03-002
+    logsource:
+      category: process_creation
+    detection:
+      selection_img:
+        Image|endswith: '\wmic.exe'
+      selection_cli:
+        CommandLine|contains|all:
+          - 'process'
+          - 'call'
+          - 'create'
+      condition: all of selection_*
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: medium
+    level: medium
+  wmic_susp_process_creation.yml: |
+    # SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+    # 원본: rules/windows/process_creation/proc_creation_win_wmic_susp_process_creation.yml (id 3c89a1e8-0fba-449e-8f1b-8409d6267ec8)
+    # 바꾼 것: 없다(원본 조건 그대로). ART T1047 #9 의 'wmic ... process call create rundll32' 에 걸린다.
+    title: Suspicious Process Created Via Wmic.EXE
+    id: 3c89a1e8-0fba-449e-8f1b-8409d6267ec8
+    name: wmic_susp_process_creation
+    status: test
+    description: 'Detects WMIC executing process call create with suspicious calls to processes such as rundll32, regsrv32, etc.'
+    references:
+      - https://thedfirreport.com/2020/10/08/ryuks-return/
+      - https://symantec-enterprise-blogs.security.com/blogs/threat-intelligence/ransomware-hive-conti-avoslocker
+    author: 'Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems)'
+    tags:
+      - attack.execution
+      - attack.t1047
+    logsource:
+      category: process_creation
+    detection:
+      selection:
+        CommandLine|contains|all:
+          - 'process '
+          - 'call '
+          - 'create '
+        CommandLine|contains:
+          - 'rundll32'
+          - 'bitsadmin'
+          - 'regsvr32'
+          - 'cmd.exe /c '
+          - 'cmd.exe /k '
+          - 'cmd.exe /r '
+          - 'cmd /c '
+          - 'cmd /k '
+          - 'cmd /r '
+          - 'powershell'
+          - 'pwsh'
+          - 'certutil'
+          - 'cscript'
+          - 'wscript'
+          - 'mshta'
+          - '\Users\Public\'
+          - '\Windows\Temp\'
+          - '\AppData\Local\'
+          - '%temp%'
+          - '%tmp%'
+          - '%ProgramData%'
+          - '%appdata%'
+          - '%comspec%'
+          - '%localappdata%'
+      condition: selection
+    # level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+    level: medium

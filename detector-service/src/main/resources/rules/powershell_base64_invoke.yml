@@ -1,0 +1,36 @@
+# SigmaHQ 룰을 이 에이전트가 보내는 필드에 맞게 옮긴 것이다. Detection Rule License 1.1, 출처는 README.md 참고.
+# 원본: rules/windows/process_creation/proc_creation_win_powershell_base64_invoke.yml (id 6385697e-9f1b-40bd-8817-f4a91f40508e)
+# 바꾼 것: OriginalFileName 가지를 뺐다. MITRE 첫 태그를 t1027 로 올렸다(t1059.001 은 powershell_encoded_command 가 맡는다). ART T1047 #7 의 인코딩된 Invoke-WmiMethod 에 걸린다.
+title: PowerShell Base64 Encoded Invoke Keyword
+id: 6385697e-9f1b-40bd-8817-f4a91f40508e
+name: powershell_base64_invoke
+status: test
+description: 'Detects UTF-8 and UTF-16 Base64 encoded powershell Invoke- calls'
+references:
+  - https://thedfirreport.com/2022/05/09/seo-poisoning-a-gootloader-story/
+author: 'pH-T (Nextron Systems), Harjot Singh, @cyb3rjy0t'
+tags:
+  - attack.stealth
+  - attack.t1027
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  category: process_creation
+detection:
+  selection_img:
+    Image|endswith:
+      - '\powershell.exe'
+      - '\pwsh.exe'
+  selection_cli_enc:
+    CommandLine|contains: ' -e'
+  selection_cli_invoke:
+    CommandLine|contains:
+      - 'SQBuAHYAbwBrAGUALQ'
+      - 'kAbgB2AG8AawBlAC0A'
+      - 'JAG4AdgBvAGsAZQAtA'
+      - 'SW52b2tlL'
+      - 'ludm9rZS'
+      - 'JbnZva2Ut'
+  condition: all of selection_*
+# level 은 이 시스템의 대응 수준이다. high 는 프로세스 종료(kill)를 권고하므로 명백히 악성인 것만 둔다(ADR 020). 원본 level: high
+level: medium
