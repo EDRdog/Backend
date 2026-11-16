@@ -128,6 +128,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
         if (current == null || record.key() == null) {
             return;
         }
+        // 키는 tenant/host 다(DetectionTopology). 이 클래스의 host 변수는 전부 이 단말 키를 뜻한다.
         String host = record.key();
 
         EventBuffer buffer = store.get(host);
@@ -149,7 +150,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
             }
         } else {
             // 점 룰은 선행 근거가 필요 없다. 기다리면 대응만 늦어진다
-            Rules.evaluate(List.of(), current, dataRules.get()).ifPresent(alert -> forward(host, alert));
+            Rules.evaluate(List.of(), current, dataRules.get()).ifPresent(alert -> forward(alert));
         }
 
         // 전부 담으면 상한(EventBuffer.MAX)이 금방 차서 5분 윈도우가 십여 초로 줄어든다.
@@ -170,7 +171,7 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
     }
 
     private void evaluate(String host, EventBuffer buffer, Event trigger) {
-        Rules.evaluate(priorOf(buffer, trigger), trigger, dataRules.get()).ifPresent(alert -> forward(host, alert));
+        Rules.evaluate(priorOf(buffer, trigger), trigger, dataRules.get()).ifPresent(alert -> forward(alert));
     }
 
     /** 트리거 이전 윈도우 안의 선행 이벤트만 정렬된 채로 넘긴다 (Rules 의 prior 계약). */
@@ -236,11 +237,12 @@ public class CorrelationProcessor implements Processor<String, Event, String, Al
     }
 
     /** 알림의 레코드 시각은 트리거 이벤트 시각으로 둔다. 발행이 늦어도 하류의 event-time 은 어긋나지 않는다. */
-    private void forward(String host, Alert alert) {
+    private void forward(Alert alert) {
         // 도착 순서를 뒤섞어도 탐지 건수가 같다는 것을 보이려면 발행 건수가 지표로 나와야 한다.
         // 태그는 룰과 심각도까지만 둔다. host 나 tenant 를 붙이면 카디널리티가 단말 수만큼 늘어난다.
         metrics.counter("cep.alerts", "rule", alert.ruleId(), "severity", alert.severity()).increment();
-        ctx.forward(new Record<>(host, alert, alert.ts()));
+        // 스토어 키(tenant/host)가 아니라 host 를 키로 내보낸다. 하류는 키를 안 읽지만 기존 모양을 지킨다.
+        ctx.forward(new Record<>(alert.host(), alert, alert.ts()));
     }
 
     /**

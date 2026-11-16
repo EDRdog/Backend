@@ -85,8 +85,10 @@ public class DetectionTopology {
         // 판정 시각 기준은 이벤트의 ts 이고 그건 CorrelationProcessor 가 host 별로 직접 다룬다.
         // 여기서 stream-time 을 손댈 이유가 없다(TimestampExtractor 를 붙여도 읽는 곳이 없다).
         builder.stream(eventsTopic, Consumed.with(Serdes.String(), new EventSerde()))
-                .selectKey((key, event) -> event == null ? null : event.getHost())
-                // host 기준 재분배 — 같은 host 이벤트를 한 태스크/스토어로 모아 상태 분할 방지
+                // 키는 tenant/host 다. host 만 쓰면 다른 조직의 같은 이름 PC 가 한 버퍼에 섞여 서로의 판정 근거가 된다.
+                // tenantId 는 양의 정수라 '/' 가 없어 경계가 모호하지 않다.
+                .selectKey((key, event) -> event == null ? null : event.getTenantId() + "/" + event.getHost())
+                // 키 기준 재분배 — 같은 단말 이벤트를 한 태스크/스토어로 모아 상태 분할 방지
                 .repartition(Repartitioned.with(Serdes.String(), new EventSerde())
                         .withName("events-by-host"))
                 .process(() -> new CorrelationProcessor(windowMs, graceMs, metrics, dataRules), CorrelationProcessor.STORE)
