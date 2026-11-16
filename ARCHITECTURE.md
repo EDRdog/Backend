@@ -12,7 +12,7 @@
 |---|---|---|
 | 수집 | `agent/` (Go) | 커널 이벤트 구독, 버퍼링, 서버 전송, 조치 실행 |
 | 입구 | `collector-service` | 에이전트 인증, tenant 태깅, 검증. 통과한 것만 `events` 로 발행 |
-| 판정 | `detector-service` | Kafka Streams 로 host 별 상관분석. `alerts` 발행 |
+| 판정 | `detector-service` | Kafka Streams 로 tenant/host 별 상관분석. `alerts` 발행 |
 | 알림 | `alert-service` | `alerts` 소비 → tenant 별 Slack webhook |
 | 대응 | `responder-service` | `alerts` 소비(dry-run 권고) + kill 명령 큐를 MySQL 에 보관 |
 | 저장 | `archiver-service` | `events`·`alerts` 소비 → ClickHouse 적재, S3 내보내기 |
@@ -53,7 +53,7 @@ Go Agent ──HTTPS──▶ collector ──[events]──▶ detector ──[
 | 도메인 | 위치 | 한 줄 |
 |---|---|---|
 | Event | `event-schema/src/main/proto/edrdog/v1/event.proto` | 토픽 계약. 필드 1~12, 16번 미만으로 묶어 태그를 1바이트로 유지 |
-| 룰과 판정 | `detector-service/.../rule/`, `kafkastreams/topology/CorrelationProcessor.java` | R1, R2 시퀀스 룰, R3~R5 와 Sigma 파일 룰(`DataRules`) 같은 단일 이벤트 룰, host 별 5분 윈도우, MITRE 기법 매핑 |
+| 룰과 판정 | `detector-service/.../rule/`, `kafkastreams/topology/CorrelationProcessor.java` | R1, R2 시퀀스 룰, R3~R5 와 Sigma 파일 룰(`DataRules`) 같은 단일 이벤트 룰, tenant/host 별 5분 윈도우, MITRE 기법 매핑 |
 | 상관 버퍼 | `detector-service/.../event_buffer.proto` | detector 내부 상태 스키마. 토픽 계약이 아니다 |
 | 대응 명령 | `responder-service/.../command/AgentCommand` | 정해진 종류만(`kill_process`). 상태는 조건부 UPDATE 로만 전이 |
 | 테넌트 격리 | `api-service/.../security/TenantScope.java` | 모든 ClickHouse 질의에 tenant 조건을 강제하는 단일 통로 |

@@ -49,6 +49,7 @@
 |---|---|---|---|---|
 | TEN-1 | tenant 없이 조회 질의를 만들 수 없다 | `TenantScopeTest` 의 `tenant_없이_만드는_공개_경로가_없다` | `docs/design-docs/decisions/004-server-resolves-tenant-from-node-key.md` | 자동 |
 | TEN-2 | tenant 조건이 항상 첫 조건으로 붙는다 | `TenantScopeTest` 의 `tenant_는_항상_첫_조건이고_값은_trim_해서_바인딩된다` | `docs/design-docs/decisions/004-server-resolves-tenant-from-node-key.md` | 자동 |
+| TEN-3 | 다른 tenant 의 같은 이름 PC 행동은 한 상관 버퍼에 섞이지 않는다 | `DetectionTopologyTest` 의 `sameHostNameAcrossTenants_doesNotCorrelate` | `docs/design-docs/decisions/036-detector-key-by-tenant-and-host.md` | 자동 |
 
 ## 적재
 
