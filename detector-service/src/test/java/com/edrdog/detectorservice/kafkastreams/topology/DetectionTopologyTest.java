@@ -114,6 +114,19 @@ class DetectionTopologyTest {
     }
 
     @Test
+    @DisplayName("다른 조직의 같은 이름 PC 행동은 한 시퀀스로 묶지 않는다")
+    void sameHostNameAcrossTenants_doesNotCorrelate() {
+        // A 회사 PC 의 워드 실행이 B 회사 PC 의 셸 실행과 이어져 B 회사에 알림이 나가면 조직 분리가 깨진 것이다.
+        events.pipeInput("k", TestEvents.of("pc-01", EventTypes.PROCESS, 1000, "winword.exe", "explorer.exe",
+                "winword.exe", null, 0, null, null, null, "1"));
+        events.pipeInput("k", TestEvents.of("pc-01", EventTypes.PROCESS, 2000, "powershell.exe", "winword.exe",
+                "powershell.exe", null, 0, null, null, null, "2"));
+        settle();
+
+        assertThat(alertCount("SUSPICIOUS_PROCESS_CHAIN")).isZero();
+    }
+
+    @Test
     @DisplayName("발행에서 소비까지의 대기를 잰다")
     void kafkaLag_isRecorded() {
         // 프로듀서 스팬에도 컨슈머 스팬에도 안 잡히는 구간이라 여기서 재지 않으면 집계할 숫자가 없다(#181).
