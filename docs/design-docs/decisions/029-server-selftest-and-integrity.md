@@ -66,7 +66,7 @@ KISA EDR 성능평가 항목 BF-10(보안기능 자체시험), BF-11(자체와 �
   - 기준값 파일을 두는 ConfigMap, Secret 에 쓸 수 있는 사람은 파일과 기준값을 함께 바꿀 수 있다. 이 검사는 이미지나 컨테이너 안의 파일만 바꾸는 경우를 잡는다.
   - 가입한 계정이 전부 `admin` 이라(`AuthService.signup`) 지금은 로그인한 사용자 누구나 이 API 를 쓴다. 서버 운영자 구분은 인증 묶음의 일이다.
   - 결과를 지우지 않는다. 시간당 한 행이라 당장 문제는 아니다.
-- **배포 때 할 일**: CI 가 jar 의 `sha256sum` 을 만들어 기준값 파일로 마운트하고 `INTEGRITY_BASELINE_FILE` 을 준다. 이 연결은 이번에 하지 않았다. 그 전까지 운영의 무결성 항목은 `SKIP` 이다.
+- **배포 연결 (2026-11-27)**: api-service Dockerfile 이 이미지를 구울 때 `sha256sum /app/app.jar` 를 `/app/integrity.sha256` 에 적고 `INTEGRITY_BASELINE_FILE` 을 준다. 운영 무결성이 `SKIP` 에서 `PASS` 로 바뀐다. 버린 대안: CD 가 ConfigMap 으로 이미지 밖에 두는 방식(위 권장). 이미지 안 기준값은 이미지째 바꾸는 공격은 못 잡지만, cd.yml 과 k8s 매니페스트를 고치지 않고 두 줄로 끝나서 골랐다. 이미지 밖 보관은 남은 부채로 둔다.
 - **감사기록**: 결과를 감사기록에 남기는 연결은 `SelfTestService.run` 의 저장 직후(`runs.save` 다음)에서 `AuditService` 를 부르면 된다. 요청한 관리자는 `requestedBy` 에 있다.
 
 ## 관련
