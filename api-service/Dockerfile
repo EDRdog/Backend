@@ -7,5 +7,8 @@ ADD https://repo1.maven.org/maven2/com/newrelic/agent/java/newrelic-agent/8.21.0
 COPY build/libs/*.jar app.jar
 # 에이전트 설정(Kafka 분산추적). 에이전트는 자기 jar 와 같은 디렉터리의 newrelic.yml 을 읽는다.
 COPY build/libs/newrelic.yml /app/newrelic.yml
+# 무결성 기준값: 구울 때 jar 해시를 적어 둔다. 이미지째 바꾸는 공격은 못 잡지만 실행 중 jar 교체는 잡는다(ADR 029 갱신).
+RUN sha256sum /app/app.jar > /app/integrity.sha256
+ENV INTEGRITY_BASELINE_FILE=/app/integrity.sha256
 EXPOSE 8084
 ENTRYPOINT ["java", "-javaagent:/app/newrelic.jar", "-jar", "/app/app.jar"]
